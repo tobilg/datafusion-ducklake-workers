@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "defaultEffect": "deny",
+  "rules": [
+    {
+      "ruleId": "query-service-metadata-reader",
+      "effect": "allow",
+      "principal": { "scopesAny": ["query.read"] },
+      "actions": ["schema.read", "table.read", "column.read"],
+      "resource": { "schema": "*", "table": "*", "column": "*" }
+    }
+  ]
+}

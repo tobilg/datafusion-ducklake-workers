@@ -1,0 +1,4 @@
+# Local development only. Generate your own 32+ byte value.
+API_KEY=
+# DuckLake mode only: separate catalog reader credential.
+# QUACKLAKE_JWT=

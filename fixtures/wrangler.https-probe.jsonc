@@ -1,0 +1,9 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "emscripten-https-local-probe",
+  "main": "../repro/https/build/full/index.js",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": ["new_module_registry"],
+  "workers_dev": false,
+  "preview_urls": false
+}

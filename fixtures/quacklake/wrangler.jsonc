@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "quacklake-local-fixture",
+  "main": "../../vendor/quacklake/.wrangler-build/index.js",
+  "compatibility_date": "2026-06-09",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "no_bundle": true,
+  "find_additional_modules": true,
+  "rules": [{ "type": "CompiledWasm", "globs": ["**/*.wasm"], "fallthrough": true }],
+  "vars": {
+    "QUACK_FETCH_ROWS_PER_CHUNK": "1024",
+    "QUACK_FETCH_CHUNKS_PER_BATCH": "2",
+    "QUACKLAKE_JWT_ISSUER": "quacklake",
+    "QUACKLAKE_JWT_AUDIENCE": "quacklake:quack",
+    "QUACKLAKE_JWT_DEFAULT_TTL_SECONDS": "31536000",
+    "DUCKLAKE_R2_BINDINGS": "{\"quacklake-fixture\":\"DUCKLAKE_R2\"}"
+  },
+  "r2_buckets": [{ "binding": "DUCKLAKE_R2", "bucket_name": "quacklake-fixture" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CATALOG_REGISTRY", "class_name": "CatalogRegistry" },
+      { "name": "QUACK_CATALOGS", "class_name": "QuackCatalogObject" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CatalogRegistry", "QuackCatalogObject"] }]
+}

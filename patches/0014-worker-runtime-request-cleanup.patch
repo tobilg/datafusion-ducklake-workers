@@ -1,0 +1,217 @@
+Subject: [PATCH] Reclaim request-owned Emscripten I/O and timer state
+
+Includes a managed SDK patch and exact-prefix cache migration. No arbitrary SDK
+override or Rust unsafe code. See docs/runtime-memory.md for the actual reproducer.
+
+diff --git a/worker-build/src/emscripten.rs b/worker-build/src/emscripten.rs
+--- a/worker-build/src/emscripten.rs
++++ b/worker-build/src/emscripten.rs
+@@ -23,6 +23,10 @@
+     (
+         "noderawsockets-dns.patch",
+         include_str!("../patches/emscripten/noderawsockets-dns.patch"),
++    ),
++    (
++        "request-lifetime-cleanup.patch",
++        include_str!("../patches/emscripten/request-lifetime-cleanup.patch"),
+     ),
+ ];
+ 
+@@ -150,6 +154,25 @@
+         return Ok(dir);
+     }
+ 
++    // A byte-identical prefix of the known patch series can be extended without
++    // reinstalling LLVM. Unknown or changed stamps still take the clean path.
++    if installed && patch_frontend {
++        if let Ok(recorded) = fs::read_to_string(&stamp) {
++            for count in 1..PATCHES.len() {
++                if recorded == patch_stamp(&PATCHES[..count]) {
++                    for (name, contents) in &PATCHES[count..] {
++                        PBAR.info(&format!("{CONFIG}Applying {name}"));
++                        apply_patch(&frontend, contents)
++                            .with_context(|| format!("Applying {name}"))?;
++                    }
++                    let _ = fs::remove_file(frontend.join("cache/sysroot_install.stamp"));
++                    fs::write(&stamp, &expected_stamp)?;
++                    return Ok(dir);
++                }
++            }
++        }
++    }
++
+     let python = which::which("python3")
+         .or_else(|_| which::which("python"))
+         .map_err(|_| anyhow!("python3 is required to install the Emscripten SDK"))?;
+@@ -194,7 +217,11 @@
+ }
+ 
+ fn stamp_contents() -> String {
+-    PATCHES
++    patch_stamp(PATCHES)
++}
++
++fn patch_stamp(patches: &[(&str, &str)]) -> String {
++    patches
+         .iter()
+         .map(|(name, contents)| format!("{name} {:016x}\n", fnv1a(contents.as_bytes())))
+         .collect()
+
+diff --git a/worker-build/patches/emscripten/request-lifetime-cleanup.patch b/worker-build/patches/emscripten/request-lifetime-cleanup.patch
+new file mode 100644
+--- /dev/null
++++ b/worker-build/patches/emscripten/request-lifetime-cleanup.patch
+@@ -0,0 +1,153 @@
++Subject: [PATCH] Reclaim anonymous I/O nodes and request-owned event callbacks
++
++Base: Emscripten 6.0.10 after the pinned epoll and DNS patches.
++Actual workerd repeated-request heap reproducer: repro/https and
++scripts/observe-local-memory.mjs. Map entries are deleted on completion/cancel;
++IDs remain signed i32 and skip live IDs on wrap. No thread or runtime changes.
++
++diff --git a/src/lib/libsockfs.js b/src/lib/libsockfs.js
++--- a/src/lib/libsockfs.js
+++++ b/src/lib/libsockfs.js
++@@ -121,7 +121,9 @@
++ 
++       // create the filesystem node to store the socket structure
++       var name = SOCKFS.nextname();
++-      var node = FS.createNode(SOCKFS.root, name, {{{ cDefs.S_IFSOCK }}}, 0);
+++      // Anonymous sockets are reachable through open streams, never path lookup.
+++      // Hashing them in FS.nameTable retains closed sockets for the isolate lifetime.
+++      var node = new FS.FSNode(SOCKFS.root, name, {{{ cDefs.S_IFSOCK }}}, 0);
++       node.sock = sock;
++ 
++       // and the wrapping stream that enables library functions such
++
++diff --git a/src/lib/libpipefs.js b/src/lib/libpipefs.js
++--- a/src/lib/libpipefs.js
+++++ b/src/lib/libpipefs.js
++@@ -37,8 +37,9 @@
++ 
++       var rName = PIPEFS.nextname();
++       var wName = PIPEFS.nextname();
++-      var rNode = FS.createNode(PIPEFS.root, rName, {{{ cDefs.S_IFIFO }}}, 0);
++-      var wNode = FS.createNode(PIPEFS.root, wName, {{{ cDefs.S_IFIFO }}}, 0);
+++      // Anonymous pipe nodes, like epoll nodes, must not enter FS.nameTable.
+++      var rNode = new FS.FSNode(PIPEFS.root, rName, {{{ cDefs.S_IFIFO }}}, 0);
+++      var wNode = new FS.FSNode(PIPEFS.root, wName, {{{ cDefs.S_IFIFO }}}, 0);
++ 
++       rNode.pipe = pipe;
++       wNode.pipe = pipe;
++
++diff --git a/src/lib/libepoll.js b/src/lib/libepoll.js
++--- a/src/lib/libepoll.js
+++++ b/src/lib/libepoll.js
++@@ -352,10 +352,17 @@
++   },
++ 
++   $epollClearListener__internal: true,
+++  $epollClearListener__deps: ['$emClearImmediate'],
++   $epollClearListener: (ep, it) => {
++     ep.interests.delete(it.key);
++     it.cleared = true;
++     it.listener.listeners.delete(it.listener.entry);
+++    for (var id of it.immediates || []) emClearImmediate(id);
+++    it.immediates?.clear();
+++    if (it.held) {
+++      it.held = false;
+++      {{{ runtimeKeepalivePop() }}}
+++    }
++   },
++ 
++   // See <emscripten/epoll.h>. A listener is keyed by (callback, userdata),
++@@ -413,7 +420,7 @@
++         // Deferred: this microtask can run between main returning and
++         // callMain's own exit (under JSPI callMain resumes in a microtask), and
++         // exiting here would re-enter exitRuntime there.
++-#if !MINIMAL_RUNTIME
+++#if !MINIMAL_RUNTIME && EXIT_RUNTIME
++         emSetImmediate(maybeExit);
++ #endif
++         return;
++@@ -421,7 +428,13 @@
++       deliver();
++       // The delivery took the hold if it left the set ready: another turn, as
++       // a macrotask so a still-ready level fd yields to I/O.
++-      if (it.held) emSetImmediate(turn);
+++      if (it.held) {
+++        var id = emSetImmediate(() => {
+++          it.immediates.delete(id);
+++          turn();
+++        });
+++        (it.immediates ||= new Set()).add(id);
+++      }
++     }
++     // An edge delivers as a microtask: after the notifying stack (a host event
++     // or a wasm call) unwinds, but in the same host turn. A macrotask would
++
++diff --git a/src/lib/libeventloop.js b/src/lib/libeventloop.js
++--- a/src/lib/libeventloop.js
+++++ b/src/lib/libeventloop.js
++@@ -18,13 +18,15 @@
++   $safeSetTimeout: (func, timeout) => {
++     {{{ runtimeKeepalivePush() }}}
++     // Slot 0 is reserved so that, like setTimeout, ids are always non-zero.
++-    safeSetTimeout.mapping ||= [0];
++-    var id = safeSetTimeout.mapping.length;
++-    safeSetTimeout.mapping[id] = setTimeout(() => {
++-      safeSetTimeout.mapping[id] = undefined;
+++    safeSetTimeout.mapping ||= new Map();
+++    var id;
+++    do { id = safeSetTimeout.next = ((safeSetTimeout.next + 1) | 0) || 1; }
+++    while (safeSetTimeout.mapping.has(id));
+++    safeSetTimeout.mapping.set(id, setTimeout(() => {
+++      safeSetTimeout.mapping.delete(id);
++       {{{ runtimeKeepalivePop() }}}
++       callUserCallback(func);
++-    }, timeout);
+++    }, timeout));
++     return id;
++   },
++ 
++@@ -32,22 +34,24 @@
++   // timeout has already fired or been cleared.
++   $safeClearTimeout__deps: ['$safeSetTimeout'],
++   $safeClearTimeout: (id) => {
++-    var handle = safeSetTimeout.mapping?.[id];
+++    var handle = safeSetTimeout.mapping?.get(id);
++     if (!handle) return;
++     clearTimeout(handle);
++-    safeSetTimeout.mapping[id] = undefined;
+++    safeSetTimeout.mapping.delete(id);
++     {{{ runtimeKeepalivePop() }}}
++   },
++ 
++   // Just like setImmediate but returns an i32 that can be passed back
++   // to wasm rather than a JS object.
++   $setImmediateWrapped: (func) => {
++-    setImmediateWrapped.mapping ||= [];
++-    var id = setImmediateWrapped.mapping.length;
++-    setImmediateWrapped.mapping[id] = setImmediate(() => {
++-      setImmediateWrapped.mapping[id] = undefined;
+++    setImmediateWrapped.mapping ||= new Map();
+++    var id;
+++    do { id = setImmediateWrapped.next = ((setImmediateWrapped.next + 1) | 0) || 1; }
+++    while (setImmediateWrapped.mapping.has(id));
+++    setImmediateWrapped.mapping.set(id, setImmediate(() => {
+++      setImmediateWrapped.mapping.delete(id);
++       func();
++-    });
+++    }));
++     return id;
++   },
++ 
++@@ -63,10 +67,10 @@
++   // Just like clearImmediate but takes an i32 rather than an object.
++   // Returns true if the immediate was still pending.
++   $clearImmediateWrapped: (id) => {
++-    var handle = setImmediateWrapped.mapping[id];
+++    var handle = setImmediateWrapped.mapping.get(id);
++     if (!handle) return false;
++     clearImmediate(handle);
++-    setImmediateWrapped.mapping[id] = undefined;
+++    setImmediateWrapped.mapping.delete(id);
++     return true;
++   },
++ 

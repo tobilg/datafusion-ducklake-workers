@@ -1,0 +1,25 @@
+{
+  "name": "datafusion-files-full-r2",
+  "main": "../../../build/full/index.js",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": [
+    "new_module_registry"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "QUERY_MODE": "files",
+    "ALLOW_LOCAL_HTTP": "true",
+    "R2_BINDINGS": "{\"files-a\": \"FILE_A\", \"files-b\": \"FILE_B\"}"
+  },
+  "r2_buckets": [
+    {
+      "binding": "FILE_A",
+      "bucket_name": "files-a"
+    },
+    {
+      "binding": "FILE_B",
+      "bucket_name": "files-b"
+    }
+  ]
+}

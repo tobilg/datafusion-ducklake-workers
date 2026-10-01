@@ -1,0 +1,57 @@
+[package]
+name = "datafusion-quacklake-worker"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Read-only DataFusion SQL on Cloudflare Workers, with optional DuckLake catalogs"
+repository = "https://github.com/tobilg/datafusion-quacklake-workers"
+readme = "README.md"
+
+[dependencies]
+worker = { path = "vendor/workers-rs/worker", features = ["experimental_tokio"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "macros", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = "0.3"
+async-trait = "0.1"
+bytes = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+url = "2"
+sqlparser = { version = "=0.62.0", features = ["visitor"] }
+base64 = "0.22"
+subtle = "2"
+uuid = { version = "1", features = ["v4"] }
+datafusion = { version = "=55.0.0", default-features = false, features = ["sql", "parquet", "datetime_expressions", "string_expressions"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "stream"] }
+datafusion-ducklake-provider = { optional = true, path = "vendor/datafusion-ducklake-provider/crates/datafusion-ducklake", default-features = false, features = ["quack", "object-store-s3"] }
+object_store = { version = "=0.13.2", default-features = false, features = ["aws"] }
+ducklake-storage = { optional = true, path = "vendor/datafusion-ducklake-provider/crates/ducklake-storage", default-features = false, features = ["quack", "object-store-s3"] }
+ducklake-catalog = { optional = true, path = "vendor/datafusion-ducklake-provider/crates/ducklake-catalog" }
+
+[features]
+default = ["ducklake"]
+ducklake = ["dep:datafusion-ducklake-provider", "dep:ducklake-storage", "dep:ducklake-catalog"]
+protocol-probe = []
+
+[profile.release]
+opt-level = "s"
+
+[patch."https://github.com/guybedford/libc"]
+libc = { path = "vendor/libc" }
+
+[patch."https://github.com/rust-lang/libc"]
+libc = { path = "vendor/libc" }
+
+[patch.crates-io]
+parquet = { path = "vendor/parquet" }
+datafusion-datasource-json = { path = "vendor/datafusion-datasource-json" }
+datafusion-datasource-csv = { path = "vendor/datafusion-datasource-csv" }
+datafusion-datasource-arrow = { path = "vendor/datafusion-datasource-arrow" }
+object_store = { path = "vendor/object_store" }
+reqwest = { path = "vendor/reqwest" }
+ring = { path = "vendor/ring" }
+libc = { path = "vendor/libc" }
+tokio = { git = "https://github.com/guybedford/tokio", rev = "7227f2d72739c3bc9821074cc704e7582be92907" }
+tokio-macros = { git = "https://github.com/guybedford/tokio", rev = "7227f2d72739c3bc9821074cc704e7582be92907" }
+mio = { path = "vendor/mio" }

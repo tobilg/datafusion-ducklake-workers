@@ -1,0 +1,35 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index e8cd6d8..4294e6f 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -20,7 +20,7 @@ async-trait = "0.1.89"
+ bytes = "1.12.0"
+ chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+ clap = { version = "4.6.1", features = ["derive"] }
+-datafusion = "55.0.0"
++datafusion = { version = "55.0.0", default-features = false, features = ["sql", "parquet", "datetime_expressions", "string_expressions"] }
+ datafusion-datasource = "55.0.0"
+ datafusion-sqllogictest = "55.0.0"
+ duckdb = { version = "1.10505.0", features = ["bundled"] }
+diff --git a/crates/datafusion-ducklake/src/catalog.rs b/crates/datafusion-ducklake/src/catalog.rs
+index b654e19..7a133df 100644
+--- a/crates/datafusion-ducklake/src/catalog.rs
++++ b/crates/datafusion-ducklake/src/catalog.rs
+@@ -1381,7 +1381,7 @@ where
+         .await
+ }
+ 
+-pub(crate) async fn register_ducklake_catalog_with_options<B>(
++pub async fn register_ducklake_catalog_with_options<B>(
+     ctx: &SessionContext,
+     name: impl Into<String>,
+     backend: Arc<B>,
+@@ -1427,7 +1427,7 @@ where
+     .await
+ }
+ 
+-pub(crate) async fn register_ducklake_catalog_at_snapshot_with_options<B>(
++pub async fn register_ducklake_catalog_at_snapshot_with_options<B>(
+     ctx: &SessionContext,
+     name: impl Into<String>,
+     backend: Arc<B>,

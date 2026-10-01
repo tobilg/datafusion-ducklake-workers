@@ -1,0 +1,33 @@
+diff --git a/crates/ducklake-storage/src/engine/scan.rs b/crates/ducklake-storage/src/engine/scan.rs
+index 1a75286..98a60c6 100644
+--- a/crates/ducklake-storage/src/engine/scan.rs
++++ b/crates/ducklake-storage/src/engine/scan.rs
+@@ -751,17 +751,22 @@ async fn resolved_inlined_tables<B: CatalogBackend + ?Sized>(
+     snapshots: &[Snapshot],
+     current_schema: &ducklake_catalog::TableSchema,
+ ) -> Result<Vec<ResolvedInlinedDataTable>> {
++    let snapshot_versions = || snapshots
++        .iter()
++        .filter(|candidate| candidate.snapshot_id.0 <= snapshot.snapshot_id.0)
++        .map(|candidate| (candidate.schema_version, candidate.snapshot_id))
++        .collect::<Vec<_>>();
+     let mut version_snapshots = match backend.schema_versions(table).await {
+-        Ok(versions) => versions
++        Ok(versions) if !versions.is_empty() => versions
+             .into_iter()
+             .filter(|version| version.begin_snapshot.0 <= snapshot.snapshot_id.0)
+             .map(|version| (version.schema_version, version.begin_snapshot))
+             .collect::<Vec<_>>(),
+-        Err(err) if missing_optional_schema_versions_table(&err) => snapshots
+-            .iter()
+-            .filter(|candidate| candidate.snapshot_id.0 <= snapshot.snapshot_id.0)
+-            .map(|candidate| (candidate.schema_version, candidate.snapshot_id))
+-            .collect::<Vec<_>>(),
++        // Quack-created catalogs can contain the optional table without per-table rows.
++        // Inspect historical versions just as when the optional table is absent; using
++        // only the current global schema version would silently omit older inlined data.
++        Ok(_) => snapshot_versions(),
++        Err(err) if missing_optional_schema_versions_table(&err) => snapshot_versions(),
+         Err(err) => return Err(err),
+     };
+     if !version_snapshots

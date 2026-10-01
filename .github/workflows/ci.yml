@@ -1,0 +1,82 @@
+name: Validate
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  quick:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: npm install --global npm@10.9.7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14.7'
+      - run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt
+      - run: npm run check
+      - run: git diff --exit-code
+  worker:
+    needs: quick
+    runs-on: macos-15
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [core, full]
+    env:
+      CARGO_BUILD_JOBS: '2'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - run: npm install --global npm@10.9.7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14.7'
+      - run: brew install ripgrep
+      - run: bash scripts/bootstrap.sh
+      - run: python3 scripts/install-duckdb.py
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.25.3'
+          cache: false
+      - run: bash scripts/build-minio.sh --native
+      - run: bash scripts/build.sh --variant ${{ matrix.variant }}
+      - run: bash scripts/dependency-graphs.sh ${{ matrix.variant }}
+      - run: python3 scripts/verify-patches.py
+      - run: python3 scripts/validate.py --suite files --variant ${{ matrix.variant }} --backend all --skip-build
+      - run: bash scripts/size.sh ${{ matrix.variant }}
+      - run: python3 scripts/check-artifacts.py --variant ${{ matrix.variant }} --tests
+      - if: matrix.variant == 'full'
+        run: npm install --global pnpm@12.4.2
+      - if: matrix.variant == 'full'
+        run: bash scripts/build-quacklake.sh
+      - if: matrix.variant == 'full'
+        run: python3 scripts/validate.py --suite catalog --backend all --skip-build
+      - if: matrix.variant == 'full'
+        run: |
+          WORKER_LINK_OPT=1 bash scripts/build.sh --variant core --features protocol-probe
+          WORKER_LINK_OPT=1 bash scripts/build.sh --variant full --features protocol-probe
+          python3 scripts/validate.py --suite probes --skip-build
+      - if: matrix.variant == 'full'
+        run: python3 scripts/verify-patches.py --fixtures
+      - run: python3 scripts/check-release.py
+      - run: git diff --exit-code

@@ -1,0 +1,60 @@
+{
+  "rust": {
+    "channel": "1.98.0",
+    "version": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "commit": "88d9e12ae178fab0fb5cc050a94da85685d449ea",
+    "llvm": "22.1.8",
+    "components": [
+      "rustfmt"
+    ]
+  },
+  "node": "22.22.2",
+  "npm": "10.9.7",
+  "wrangler": "4.143.0",
+  "workerd": "1.20260926.1",
+  "miniflare": "5.20260926.0-alpha",
+  "worker-build": "0.8.7",
+  "managed_tools": {
+    "emscripten": "6.0.10",
+    "wasm-bindgen": "0.2.129",
+    "wasm-opt": "132",
+    "esbuild": "0.28.2"
+  },
+  "preview_patches": {
+    "tokio": "7227f2d72739c3bc9821074cc704e7582be92907",
+    "tokio-macros": "7227f2d72739c3bc9821074cc704e7582be92907",
+    "mio": "0788dbb67883cb6191503af999471def54e3fb77",
+    "libc": "b29beb056cb7cea51dd1b9e68342e30a956951a9"
+  },
+  "workers-rs-submodules": {
+    "ts-gen": "b698be710dd2f96e813796d9bac6ebb089c90f0f",
+    "wasm-bindgen": "165586f854c852bcbc4d14d8a75a0a0e0d0abc12"
+  },
+  "managed_emscripten_patches": {
+    "epoll-listeners.patch": "50b76310931581eeb2e20b3897c623e77116bf591527339f4fbefbecf5c3e711",
+    "noderawsockets-dns.patch": "42d6fa9c6ba2558d9657fac24243f3c19cb6978ac396543803cfb61c4d6ec2fc",
+    "request-lifetime-cleanup.patch": "7ee48d80abf19802e935d81e1b336c638635763d145151047021de1370bea16c"
+  },
+  "pnpm": "12.4.2",
+  "datafusion": "55.0.0",
+  "arrow": "59.2.0",
+  "parquet": "59.2.0",
+  "object_store": "0.13.2",
+  "fixture_tools": {
+    "go": "1.25.3",
+    "duckdb": "1.5.5 (d8cdaa33fd)",
+    "minio": {
+      "repository": "https://github.com/minio/minio.git",
+      "tag": "RELEASE.2025-09-07T16-13-09Z",
+      "revision": "07c3a429bfed433e49018cb0f78a52145d4bedeb",
+      "go": "go1.25.3",
+      "purpose": "Source-built loopback S3 fixture only; no registry image dependency"
+    },
+    "quacklake_build_vite": "8.3.1",
+    "quacklake_lifecycle_scripts": "pnpm install --frozen-lockfile --ignore-scripts; upstream workspace policy and frozen platform binaries",
+    "quacklake": "0.2.1",
+    "quacklake_polyglot_sql_sdk": "0.13.0",
+    "quacklake_vitest": "5.0.2",
+    "quacklake_vitest_pool_workers": "0.22.0"
+  }
+}

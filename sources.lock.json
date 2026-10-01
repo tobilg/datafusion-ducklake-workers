@@ -1,0 +1,51 @@
+{
+  "workers-rs": {
+    "url": "https://github.com/cloudflare/workers-rs.git",
+    "rev": "b57ba6ef8198c65499c2f92b1845cc2412dd6e8c",
+    "submodules": true
+  },
+  "datafusion-ducklake-provider": {
+    "url": "https://github.com/tobilg/datafusion-ducklake-provider.git",
+    "rev": "6b97e804e50c4765964e0362dc5e665e1c630f72"
+  },
+  "quacklake": {
+    "url": "https://github.com/tobilg/quacklake.git",
+    "rev": "b3ef21778aa809763bc83e0472eb70d84c1fe906"
+  },
+  "reqwest": {
+    "url": "https://github.com/seanmonstar/reqwest.git",
+    "rev": "d97859910c357827ad5993d37ce750ad595f4fff"
+  },
+  "libc": {
+    "url": "https://github.com/rust-lang/libc.git",
+    "rev": "b29beb056cb7cea51dd1b9e68342e30a956951a9"
+  },
+  "ring": {
+    "url": "https://static.crates.io/crates/ring/ring-0.17.14.crate",
+    "sha256": "a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7"
+  },
+  "object_store": {
+    "url": "https://static.crates.io/crates/object_store/object_store-0.13.2.crate",
+    "sha256": "622acbc9100d3c10e2ee15804b0caa40e55c933d5aa53814cd520805b7958a49"
+  },
+  "datafusion-datasource-json": {
+    "url": "https://static.crates.io/crates/datafusion-datasource-json/datafusion-datasource-json-55.0.0.crate",
+    "sha256": "da02fb9324f56bd8c53f1ee2e949547425cb66f76adc6832b10d44f80a1221d2"
+  },
+  "datafusion-datasource-csv": {
+    "url": "https://static.crates.io/crates/datafusion-datasource-csv/datafusion-datasource-csv-55.0.0.crate",
+    "sha256": "b5345285b0c3eaab412e7539b706973c083bd7e5bce575de5e0a3da488d08d1d"
+  },
+  "datafusion-datasource-arrow": {
+    "url": "https://static.crates.io/crates/datafusion-datasource-arrow/datafusion-datasource-arrow-55.0.0.crate",
+    "sha256": "5ad17ec881bff2ed7768b4bfe971d3efbf3473f2fd1f9d365447bccbdf908678"
+  },
+  "parquet": {
+    "url": "https://static.crates.io/crates/parquet/parquet-59.2.0.crate",
+    "sha256": "7065842956a20c2a536924ce8e4d9955f7422451511b9eb7500d7bfe5077e59c"
+  },
+  "mio": {
+    "url": "https://github.com/guybedford/mio.git",
+    "rev": "0788dbb67883cb6191503af999471def54e3fb77"
+  }
+}

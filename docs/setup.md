@@ -1,0 +1,154 @@
+# Developer workflow
+
+Start with the [core quickstart](../README.md). The application build requires
+Git, rustup, a C compiler, ripgrep, Python 3.12+ and Node 22.22.2/npm 10.9.7.
+Python 3.14 and macOS arm64 were used locally. Linux runs static and native policy
+checks in CI; the Worker build there remains unverified. Windows build scripts
+are unsupported. Use Bash for shell scripts.
+
+`bash scripts/bootstrap.sh` fetches pinned runtime sources, applies the active
+patch series, installs Rust 1.98.0 with rustfmt and the Emscripten target, runs
+`npm ci`, and builds the pinned worker-build tool. It preserves existing source
+checkouts. It does not fetch the QuackLake service unless `--fixtures` is supplied.
+The provider checkout remains necessary for Cargo's optional dependency resolution.
+
+The managed SDK supplies Emscripten and the required networking patches. Do not
+substitute another SDK, use `--all-features`, or build the provider CLI/workspace.
+On macOS its cache is under `~/Library/Caches/worker-build`; sandboxed builds need
+access there. `scripts/env.sh` selects the pinned tools and clears unsupported
+SDK/flag overrides. Allow approximately 20 GiB for an initial build.
+
+## Everyday commands
+
+Use the npm commands for routine development and `scripts/validate.py` for
+integration suites. Other scripts are focused diagnostics or internal helpers;
+they do not need to be run individually during normal development.
+
+| Task | Command |
+| --- | --- |
+| Bootstrap pinned tools/sources | `npm run bootstrap` |
+| Core development server and local key | `npm run dev` |
+| Validate prerequisites | `python3 scripts/check-environment.py --profile build` |
+| Static, workflow, native policy and publication checks | `npm run check` |
+| Core build | `npm run build:core` |
+| Full build | `npm run build:full` |
+| Core/R2 integration | `npm test` |
+
+Replace `core` with `full` where applicable. Development links and probe builds
+are not release artifacts. Builds serialize compilation and JS/WASM collection;
+use the build script instead of concurrent raw worker-build commands. Every build
+verifies complete pinned vendor trees before/after compilation. Undocumented
+edits, additions, deletions, modes and symlinks fail verification without being
+reset. Only known generated output directories are excluded. Required submodules
+are verified recursively; unused provider DuckDB extension submodules may remain
+absent. Artifact checks repeat verification against the recorded source digest.
+
+For release checks, run `bash scripts/dependency-graphs.sh core`,
+`bash scripts/size.sh core` and `python3 scripts/check-artifacts.py --variant core --tests`,
+then repeat for full. Run both file transports first for the `--tests` check.
+`python3 scripts/verify-patches.py --fixtures` also checks the separate catalog
+and an installed MinIO source checkout. Generated reports stay ignored.
+
+## File integration tests
+
+Install **DuckDB 1.5.5** as the independent fixture generator with the checksummed
+local installer. It writes only `.tools/bin/duckdb`. Native R2 tests
+need no MinIO, Go, Docker, catalog or S3 credentials:
+
+```sh
+python3 scripts/install-duckdb.py
+python3 scripts/validate.py --suite files --variant core --backend r2
+python3 scripts/validate.py --suite files --variant full --backend r2
+```
+
+The runner builds the selected variant, generates actual Parquet, populates local
+R2 through Miniflare, starts the loopback range server and Worker, runs the suite,
+and stops the processes it owns even on failure. Results go to `.cache/reports/`,
+logs to `.cache/`. Tests include actual public HTTPS and therefore need internet
+access. `--skip-build` tests existing artifacts explicitly; it does not certify
+that they were compiled from current inputs.
+
+File fixture JSONC templates under `fixtures/files/` are read-only inputs.
+Generated configurations and secrets live in `.cache/fixtures/files/`. Existing
+legacy fixture secret files are copied on first use and preserved. Plain R2 and
+unsigned fixtures reject unexpected S3 secrets instead of silently deleting them.
+
+For S3, install **Go 1.25.3** and build MinIO from its pinned source:
+
+```sh
+python3 scripts/check-environment.py --profile s3
+bash scripts/build-minio.sh --native
+python3 scripts/validate.py --suite files --variant all --backend all
+```
+
+This adds signed and anonymous S3 coverage and checks range/concurrency metrics.
+Native MinIO binds only to loopback and persists under `.cache/minio-data`.
+Its volume must exceed MinIO's 1% free-space reserve. Alternatively build with
+`bash scripts/build-minio.sh` and pass `--minio docker`; the local source-built
+container is ephemeral and uses no registry image. On x86 Docker hosts set
+`MINIO_FIXTURE_ARCH=amd64` when building it.
+
+The runner refuses occupied ports. `--reuse-services` explicitly reuses your
+already-running local HTTP/MinIO/QuackLake fixtures and never stops them. Query
+Workers are always freshly started. Default file ports are 8793–8799, catalog
+ports 8790–8792, S3 9000; corresponding inspectors use 9232–9249. Do not run suites
+concurrently against shared fixture state.
+
+## Catalog integration tests
+
+Additionally install **pnpm 12.4.2**. QuackLake uses its upstream frozen lockfile
+with lifecycle scripts disabled:
+
+```sh
+python3 scripts/validate.py --suite catalog --backend r2
+# With the source-built MinIO binary available:
+python3 scripts/validate.py --suite catalog --backend all
+```
+
+The runner starts only local resources, creates the registry separately from
+actual DuckLake metadata initialization, installs the fixture reader policy,
+seeds Parquet/deletions/schema fixtures, prepares credentials and tests the full
+Worker. Both-backend runs add snapshot and credential failure/revocation tests.
+Setup journals completed steps and preserves existing metadata and credentials.
+An interrupted seed may require manual inspection; the runner never silently
+replaces tables or resets a catalog. Older manually prepared fixtures are checked
+and reused without reseeding. Snapshot tests add a dedicated metadata-only table.
+
+Native policy tests compile the actual path/URL/IP policy modules in a small
+locked host crate without DataFusion or the Worker SDK. `npm run check` includes
+them; use `python3 scripts/validate.py --suite unit` to run only those tests.
+To build and exercise diagnostic routes, real R2 adapter contracts and SDK timer
+cleanup with managed local services:
+
+```sh
+WORKER_LINK_OPT=1 python3 scripts/validate.py --suite probes
+```
+
+This uses both variants by default and the catalog fixture prerequisites above.
+Probe artifacts remain separate from release outputs. Native policy tests alone
+do not verify Worker bindings; the probe suite exercises those in local workerd.
+
+To inspect a running service manually, use `bash scripts/dev-quacklake.sh` or
+`bash scripts/dev-files.sh core r2`. Focused `test-*.py` scripts remain available
+for debugging; they expect their named local fixtures to be running. Tests and
+fixture provisioning do not accept production endpoints. Only the separate
+operator tools documented in [operations](operations.md) can target live services.
+
+## Clean sources and diagnostics
+
+```sh
+python3 scripts/prepare-clean-build.py --name clean-release
+cd .cache/clean-release
+bash scripts/bootstrap.sh
+bash scripts/build.sh --variant core
+bash scripts/build.sh --variant full
+```
+
+This exports publication candidates into a new local repository with no project
+caches. Host Cargo/SDK caches may still be reused. `--reuse-caches` explicitly
+links existing project caches for a faster source-completeness check. Neither is
+an empty-machine claim; fresh hosted CI execution is a separate check.
+
+The [diagnostics guide](diagnostics.md) covers the official baseline, protocol
+probes, startup profiles and memory investigations. All generated results are
+local and ignored; no obsolete evidence bundle is included in source control.

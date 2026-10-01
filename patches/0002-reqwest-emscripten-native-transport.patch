@@ -1,0 +1,311 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 181cc4f..f000ec2 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -123,7 +123,7 @@ serde_json = { version = "1.0", optional = true }
+ ## multipart
+ mime_guess = { version = "2.0", default-features = false, optional = true }
+ 
+-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
++[target.'cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))'.dependencies]
+ encoding_rs = { version = "0.8", optional = true }
+ http-body = "1"
+ http-body-util = "0.1.2"
+@@ -171,7 +171,7 @@ h3-quinn = { version = "0.0.10", optional = true }
+ quinn = { version = "0.11.1", default-features = false, features = ["rustls", "runtime-tokio"], optional = true }
+ futures-channel = { version = "0.3", optional = true }
+ 
+-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
++[target.'cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))'.dev-dependencies]
+ env_logger = "0.10"
+ hyper = { version = "1.1.0", default-features = false, features = ["http1", "http2", "client", "server"] }
+ hyper-util = { version = "0.1.12", features = ["http1", "http2", "client", "client-legacy", "server-auto", "server-graceful", "tokio"] }
+@@ -185,14 +185,14 @@ futures-util = { version = "0.3.28", default-features = false, features = ["std"
+ 
+ # wasm
+ 
+-[target.'cfg(target_arch = "wasm32")'.dependencies]
++[target.'cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))'.dependencies]
+ js-sys = "0.3.77"
+ serde_json = "1.0"
+ wasm-bindgen = "0.2.89"
+ wasm-bindgen-futures = "0.4.18"
+ wasm-streams = { version = "0.4", optional = true }
+ 
+-[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
++[target.'cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))'.dependencies.web-sys]
+ version = "0.3.28"
+ features = [
+     "AbortController",
+@@ -213,7 +213,7 @@ features = [
+     "RequestCache"
+ ]
+ 
+-[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
++[target.'cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))'.dev-dependencies]
+ wasm-bindgen = { version = "0.2.89", features = ["serde-serialize"] }
+ wasm-bindgen-test = "0.3"
+ 
+diff --git a/src/async_impl/request.rs b/src/async_impl/request.rs
+index bcde795..ff4cf96 100644
+--- a/src/async_impl/request.rs
++++ b/src/async_impl/request.rs
+@@ -472,7 +472,7 @@ impl RequestBuilder {
+     // is just to nudge people to reduce breakage. It may be removed in a
+     // future patch version.
+     #[doc(hidden)]
+-    #[cfg_attr(target_arch = "wasm32", deprecated)]
++    #[cfg_attr(all(target_arch = "wasm32", not(target_os = "emscripten")), deprecated)]
+     pub fn fetch_mode_no_cors(self) -> RequestBuilder {
+         self
+     }
+diff --git a/src/dns/gai.rs b/src/dns/gai.rs
+index be0895a..371e738 100644
+--- a/src/dns/gai.rs
++++ b/src/dns/gai.rs
+@@ -1,15 +1,17 @@
++#[cfg(not(target_os = "emscripten"))]
+ use hyper_util::client::legacy::connect::dns::GaiResolver as HyperGaiResolver;
++#[cfg(not(target_os = "emscripten"))]
+ use tower_service::Service;
+ 
+ use crate::dns::{Addrs, Name, Resolve, Resolving};
+ use crate::error::BoxError;
+ 
+ #[derive(Debug)]
+-pub struct GaiResolver(HyperGaiResolver);
++pub struct GaiResolver(#[cfg(not(target_os = "emscripten"))] HyperGaiResolver);
+ 
+ impl GaiResolver {
+     pub fn new() -> Self {
+-        Self(HyperGaiResolver::new())
++        Self(#[cfg(not(target_os = "emscripten"))] HyperGaiResolver::new())
+     }
+ }
+ 
+@@ -21,6 +23,19 @@ impl Default for GaiResolver {
+ 
+ impl Resolve for GaiResolver {
+     fn resolve(&self, name: Name) -> Resolving {
++        // The preview Tokio resolver uses Emscripten's async getaddrinfo.
++        // Hyper's GaiResolver calls spawn_blocking, which needs OS threads.
++        #[cfg(target_os = "emscripten")]
++        {
++            Box::pin(async move {
++                tokio::net::lookup_host((name.as_str(), 0))
++                    .await
++                    .map(|addrs| Box::new(addrs.collect::<Vec<_>>().into_iter()) as Addrs)
++                    .map_err(|err| Box::new(err) as BoxError)
++            })
++        }
++        #[cfg(not(target_os = "emscripten"))]
++        {
+         let mut this = self.0.clone();
+         Box::pin(async move {
+             this.call(name.0)
+@@ -28,5 +43,6 @@ impl Resolve for GaiResolver {
+                 .map(|addrs| Box::new(addrs) as Addrs)
+                 .map_err(|err| Box::new(err) as BoxError)
+         })
++        }
+     }
+ }
+diff --git a/src/error.rs b/src/error.rs
+index 1128d63..1752f27 100644
+--- a/src/error.rs
++++ b/src/error.rs
+@@ -1,4 +1,4 @@
+-#![cfg_attr(target_arch = "wasm32", allow(unused))]
++#![cfg_attr(all(target_arch = "wasm32", not(target_os = "emscripten")), allow(unused))]
+ use std::error::Error as StdError;
+ use std::fmt;
+ use std::io;
+@@ -102,11 +102,11 @@ impl Error {
+ 
+     /// Returns true if the error is from `Response::error_for_status`.
+     pub fn is_status(&self) -> bool {
+-        #[cfg(not(target_arch = "wasm32"))]
++        #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+         {
+             matches!(self.inner.kind, Kind::Status(_, _))
+         }
+-        #[cfg(target_arch = "wasm32")]
++        #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+         {
+             matches!(self.inner.kind, Kind::Status(_))
+         }
+@@ -120,7 +120,7 @@ impl Error {
+             if err.is::<TimedOut>() {
+                 return true;
+             }
+-            #[cfg(not(target_arch = "wasm32"))]
++            #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+             if let Some(hyper_err) = err.downcast_ref::<hyper::Error>() {
+                 if hyper_err.is_timeout() {
+                     return true;
+@@ -142,7 +142,7 @@ impl Error {
+         matches!(self.inner.kind, Kind::Request)
+     }
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+     /// Returns true if the error is related to connect
+     pub fn is_connect(&self) -> bool {
+         let mut source = self.source();
+@@ -173,9 +173,9 @@ impl Error {
+     /// Returns the status code, if the error was generated from a response.
+     pub fn status(&self) -> Option<StatusCode> {
+         match self.inner.kind {
+-            #[cfg(target_arch = "wasm32")]
++            #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+             Kind::Status(code) => Some(code),
+-            #[cfg(not(target_arch = "wasm32"))]
++            #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+             Kind::Status(code, _) => Some(code),
+             _ => None,
+         }
+@@ -198,7 +198,7 @@ impl Error {
+ /// internal equivalents.
+ ///
+ /// Currently only is used for `tower::timeout::error::Elapsed`.
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+ pub(crate) fn cast_to_internal_error(error: BoxError) -> BoxError {
+     if error.is::<tower::timeout::error::Elapsed>() {
+         Box::new(crate::error::TimedOut) as BoxError
+@@ -233,7 +233,7 @@ impl fmt::Display for Error {
+             Kind::Decode => f.write_str("error decoding response body")?,
+             Kind::Redirect => f.write_str("error following redirect")?,
+             Kind::Upgrade => f.write_str("error upgrading connection")?,
+-            #[cfg(target_arch = "wasm32")]
++            #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+             Kind::Status(ref code) => {
+                 let prefix = if code.is_client_error() {
+                     "HTTP status client error"
+@@ -243,7 +243,7 @@ impl fmt::Display for Error {
+                 };
+                 write!(f, "{prefix} ({code})")?;
+             }
+-            #[cfg(not(target_arch = "wasm32"))]
++            #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+             Kind::Status(ref code, ref reason) => {
+                 let prefix = if code.is_client_error() {
+                     "HTTP status client error"
+@@ -278,14 +278,14 @@ impl StdError for Error {
+     }
+ }
+ 
+-#[cfg(target_arch = "wasm32")]
++#[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+ impl From<crate::error::Error> for wasm_bindgen::JsValue {
+     fn from(err: Error) -> wasm_bindgen::JsValue {
+         js_sys::Error::from(err).into()
+     }
+ }
+ 
+-#[cfg(target_arch = "wasm32")]
++#[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+ impl From<crate::error::Error> for js_sys::Error {
+     fn from(err: Error) -> js_sys::Error {
+         js_sys::Error::new(&format!("{err}"))
+@@ -297,9 +297,9 @@ pub(crate) enum Kind {
+     Builder,
+     Request,
+     Redirect,
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+     Status(StatusCode, Option<hyper::ext::ReasonPhrase>),
+-    #[cfg(target_arch = "wasm32")]
++    #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+     Status(StatusCode),
+     Body,
+     Decode,
+@@ -331,12 +331,12 @@ pub(crate) fn redirect<E: Into<BoxError>>(e: E, url: Url) -> Error {
+ pub(crate) fn status_code(
+     url: Url,
+     status: StatusCode,
+-    #[cfg(not(target_arch = "wasm32"))] reason: Option<hyper::ext::ReasonPhrase>,
++    #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))] reason: Option<hyper::ext::ReasonPhrase>,
+ ) -> Error {
+     Error::new(
+         Kind::Status(
+             status,
+-            #[cfg(not(target_arch = "wasm32"))]
++            #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+             reason,
+         ),
+         None::<Error>,
+diff --git a/src/into_url.rs b/src/into_url.rs
+index 5191181..655516a 100644
+--- a/src/into_url.rs
++++ b/src/into_url.rs
+@@ -23,7 +23,7 @@ impl IntoUrlSealed for Url {
+     fn into_url(self) -> crate::Result<Url> {
+         // With blob url the `self.has_host()` check is always false, so we
+         // remove the `blob:` scheme and check again if the url is valid.
+-        #[cfg(target_arch = "wasm32")]
++        #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+         if self.scheme() == "blob"
+             && self.path().starts_with("http") // Check if the path starts with http or https to avoid validating a `blob:blob:...` url.
+             && self.as_str()[5..].into_url().is_ok()
+diff --git a/src/lib.rs b/src/lib.rs
+index 99a7efc..7eeb9e3 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -262,14 +262,14 @@ use sync_wrapper as _;
+ 
+ macro_rules! if_wasm {
+     ($($item:item)*) => {$(
+-        #[cfg(target_arch = "wasm32")]
++        #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+         $item
+     )*}
+ }
+ 
+ macro_rules! if_hyper {
+     ($($item:item)*) => {$(
+-        #[cfg(not(target_arch = "wasm32"))]
++        #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+         $item
+     )*}
+ }
+@@ -336,7 +336,7 @@ fn _assert_impls() {
+     assert_send::<Request>();
+     assert_send::<RequestBuilder>();
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+     {
+         assert_send::<Response>();
+     }
+diff --git a/src/util.rs b/src/util.rs
+index 02873f7..4b0f399 100644
+--- a/src/util.rs
++++ b/src/util.rs
+@@ -24,7 +24,7 @@ where
+     header
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+ pub(crate) fn fast_random() -> u64 {
+     use std::cell::Cell;
+     use std::collections::hash_map::RandomState;
+@@ -77,7 +77,7 @@ pub(crate) fn replace_headers(dst: &mut HeaderMap, src: HeaderMap) {
+ }
+ 
+ #[cfg(feature = "cookies")]
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+ pub(crate) fn add_cookie_header(
+     headers: &mut HeaderMap,
+     cookie_store: &dyn crate::cookie::CookieStore,
+@@ -90,7 +90,7 @@ pub(crate) fn add_cookie_header(
+ 
+ pub(crate) struct Escape<'a>(&'a [u8]);
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
+ impl<'a> Escape<'a> {
+     pub(crate) fn new(bytes: &'a [u8]) -> Self {
+         Escape(bytes)

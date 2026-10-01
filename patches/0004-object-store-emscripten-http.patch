@@ -1,0 +1,408 @@
+--- a/src/chunked.rs
++++ b/src/chunked.rs
+@@ -83,7 +83,7 @@
+     async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+         let r = self.inner.get_opts(location, options).await?;
+         let stream = match r.payload {
+-            #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++            #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+             GetResultPayload::File(file, path) => {
+                 crate::local::chunked_stream(file, path, r.range.clone(), self.chunk_size)
+             }
+--- a/src/limit.rs
++++ b/src/limit.rs
+@@ -166,7 +166,7 @@
+ 
+ fn permit_get_result(r: GetResult, permit: OwnedSemaphorePermit) -> GetResult {
+     let payload = match r.payload {
+-        #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++        #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+         v @ GetResultPayload::File(_, _) => v,
+         GetResultPayload::Stream(s) => {
+             GetResultPayload::Stream(PermitWrapper::new(s, permit).boxed())
+--- a/src/local.rs
++++ b/src/local.rs
+@@ -1849,7 +1849,7 @@
+     }
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ #[cfg(test)]
+ mod not_wasm_tests {
+     use std::time::Duration;
+--- a/src/util.rs
++++ b/src/util.rs
+@@ -74,7 +74,7 @@
+     }
+ }
+ 
+-#[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++#[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+ /// Takes a function and spawns it to a tokio blocking pool if available
+ pub(crate) async fn maybe_spawn_blocking<F, T>(f: F) -> Result<T>
+ where
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -543,7 +543,7 @@
+ pub mod azure;
+ #[cfg(feature = "tokio")]
+ pub mod buffered;
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ pub mod chunked;
+ pub mod delimited;
+ #[cfg(feature = "gcp")]
+@@ -552,7 +552,7 @@
+ pub mod http;
+ #[cfg(feature = "tokio")]
+ pub mod limit;
+-#[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++#[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+ pub mod local;
+ pub mod memory;
+ pub mod path;
+@@ -572,7 +572,7 @@
+     backoff::BackoffConfig, retry::RetryConfig,
+ };
+ 
+-#[cfg(all(feature = "cloud", not(target_arch = "wasm32")))]
++#[cfg(all(feature = "cloud", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+ pub use client::Certificate;
+ 
+ #[cfg(feature = "cloud")]
+@@ -605,7 +605,7 @@
+ pub use ::http::{Extensions, HeaderMap, HeaderValue};
+ 
+ use crate::path::Path;
+-#[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++#[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+ use crate::util::maybe_spawn_blocking;
+ use async_trait::async_trait;
+ use bytes::Bytes;
+@@ -1635,7 +1635,7 @@
+ /// be able to optimise the case of a file already present on local disk
+ pub enum GetResultPayload {
+     /// The file, path
+-    #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++    #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+     File(std::fs::File, std::path::PathBuf),
+     /// An opaque stream of bytes
+     Stream(BoxStream<'static, Result<Bytes>>),
+@@ -1644,7 +1644,7 @@
+ impl Debug for GetResultPayload {
+     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+         match self {
+-            #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++            #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+             Self::File(_, _) => write!(f, "GetResultPayload(File)"),
+             Self::Stream(_) => write!(f, "GetResultPayload(Stream)"),
+         }
+@@ -1656,7 +1656,7 @@
+     pub async fn bytes(self) -> Result<Bytes> {
+         let len = self.range.end - self.range.start;
+         match self.payload {
+-            #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++            #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+             GetResultPayload::File(mut file, path) => {
+                 maybe_spawn_blocking(move || {
+                     use crate::local::read_range;
+@@ -1687,7 +1687,7 @@
+     /// no additional complexity or overheads
+     pub fn into_stream(self) -> BoxStream<'static, Result<Bytes>> {
+         match self.payload {
+-            #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++            #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+             GetResultPayload::File(file, path) => {
+                 const CHUNK_SIZE: usize = 8 * 1024;
+                 local::chunked_stream(file, path, self.range, CHUNK_SIZE)
+--- a/src/prefix.rs
++++ b/src/prefix.rs
+@@ -225,7 +225,7 @@
+     }
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ #[cfg(test)]
+ mod tests {
+     use std::slice;
+--- a/src/throttle.rs
++++ b/src/throttle.rs
+@@ -274,7 +274,7 @@
+     #[allow(clippy::infallible_destructuring_match)]
+     let s = match result.payload {
+         GetResultPayload::Stream(s) => s,
+-        #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++        #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+         GetResultPayload::File(_, _) => unimplemented!(),
+     };
+ 
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -16,7 +16,7 @@
+ // under the License.
+ 
+ use crate::ObjectStore;
+-#[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++#[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+ use crate::local::LocalFileSystem;
+ use crate::memory::InMemory;
+ use crate::path::Path;
+@@ -198,7 +198,7 @@
+     let path = Path::parse(path)?;
+ 
+     let store = match scheme {
+-        #[cfg(all(feature = "fs", not(target_arch = "wasm32")))]
++        #[cfg(all(feature = "fs", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+         ObjectStoreScheme::Local => Box::new(LocalFileSystem::new()) as _,
+         ObjectStoreScheme::Memory => Box::new(InMemory::new()) as _,
+         #[cfg(feature = "aws")]
+@@ -224,7 +224,7 @@
+             feature = "azure",
+             feature = "gcp",
+             feature = "http",
+-            not(target_arch = "wasm32")
++            any(not(target_arch = "wasm32"), target_os = "emscripten")
+         )))]
+         s => {
+             return Err(super::Error::Generic {
+@@ -423,7 +423,7 @@
+     }
+ 
+     #[tokio::test]
+-    #[cfg(all(feature = "http", not(target_arch = "wasm32")))]
++    #[cfg(all(feature = "http", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+     async fn test_url_http() {
+         use crate::{ObjectStoreExt, client::mock_server::MockServer};
+         use http::{Response, header::USER_AGENT};
+--- a/src/path/mod.rs
++++ b/src/path/mod.rs
+@@ -19,7 +19,7 @@
+ 
+ use percent_encoding::percent_decode;
+ use std::fmt::Formatter;
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ use url::Url;
+ 
+ /// The delimiter to separate object namespaces, creating a directory structure.
+@@ -201,7 +201,7 @@
+         })
+     }
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     /// Convert a filesystem path to a [`Path`] relative to the filesystem root
+     ///
+     /// This will return an error if the path contains illegal character sequences
+@@ -217,7 +217,7 @@
+         Self::from_absolute_path(absolute)
+     }
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     /// Convert an absolute filesystem path to a [`Path`] relative to the filesystem root
+     ///
+     /// This will return an error if the path contains illegal character sequences,
+@@ -226,7 +226,7 @@
+         Self::from_absolute_path_with_base(path, None)
+     }
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     /// Convert a filesystem path to a [`Path`] relative to the provided base
+     ///
+     /// This will return an error if the path contains illegal character sequences,
+@@ -467,7 +467,7 @@
+     }
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ /// Given an absolute filesystem path convert it to a URL representation without canonicalization
+ pub(crate) fn absolute_path_to_url(path: impl AsRef<std::path::Path>) -> Result<Url, Error> {
+     Url::from_file_path(&path).map_err(|_| Error::InvalidPath {
+--- a/src/aws/mod.rs
++++ b/src/aws/mod.rs
+@@ -58,14 +58,14 @@
+ mod credential;
+ mod precondition;
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ mod resolve;
+ 
+ pub use builder::{AmazonS3Builder, AmazonS3ConfigKey};
+ pub use checksum::Checksum;
+ pub use precondition::{S3ConditionalPut, S3CopyIfNotExists};
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ pub use resolve::resolve_bucket_region;
+ 
+ /// This struct is used to maintain the URI path encoding
+--- a/src/client/get.rs
++++ b/src/client/get.rs
+@@ -481,7 +481,7 @@
+         );
+     }
+ }
+-#[cfg(all(test, feature = "http", not(target_arch = "wasm32")))]
++#[cfg(all(test, feature = "http", any(not(target_arch = "wasm32"), target_os = "emscripten")))]
+ mod http_tests {
+     use crate::client::mock_server::MockServer;
+     use crate::client::{HttpError, HttpErrorKind, HttpResponseBody};
+--- a/src/client/mod.rs
++++ b/src/client/mod.rs
+@@ -21,10 +21,10 @@
+ 
+ pub(crate) mod backoff;
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ mod dns;
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ #[cfg(test)]
+ pub(crate) mod mock_server;
+ 
+@@ -61,7 +61,7 @@
+ use std::sync::Arc;
+ use std::time::Duration;
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ use reqwest::{NoProxy, Proxy};
+ 
+ use crate::config::{ConfigValue, fmt_duration};
+@@ -261,10 +261,10 @@
+ /// This is used to configure the client to trust a specific certificate. See
+ /// [Self::from_pem] for an example
+ #[derive(Debug, Clone)]
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ pub struct Certificate(reqwest::tls::Certificate);
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ impl Certificate {
+     /// Create a `Certificate` from a PEM encoded certificate.
+     ///
+@@ -311,7 +311,7 @@
+ #[derive(Debug, Clone)]
+ pub struct ClientOptions {
+     user_agent: Option<ConfigValue<HeaderValue>>,
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     root_certificates: Vec<Certificate>,
+     content_type_map: HashMap<String, String>,
+     default_content_type: Option<String>,
+@@ -345,7 +345,7 @@
+         // we opt for a slightly higher default timeout of 30 seconds
+         Self {
+             user_agent: None,
+-            #[cfg(not(target_arch = "wasm32"))]
++            #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+             root_certificates: Default::default(),
+             content_type_map: Default::default(),
+             default_content_type: None,
+@@ -472,7 +472,7 @@
+     ///
+     /// This can be used to connect to a server that has a self-signed
+     /// certificate for example.
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     pub fn with_root_certificate(mut self, certificate: Certificate) -> Self {
+         self.root_certificates.push(certificate);
+         self
+@@ -743,7 +743,7 @@
+             .with_connect_timeout(Duration::from_secs(1))
+     }
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     pub(crate) fn client(&self) -> Result<reqwest::Client> {
+         let mut builder = reqwest::ClientBuilder::new();
+ 
+--- a/src/client/retry.rs
++++ b/src/client/retry.rs
+@@ -505,7 +505,7 @@
+     }
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ #[cfg(test)]
+ mod tests {
+     use crate::RetryConfig;
+--- a/src/client/http/body.rs
++++ b/src/client/http/body.rs
+@@ -39,7 +39,7 @@
+         Self(Inner::Bytes(Bytes::new()))
+     }
+ 
+-    #[cfg(not(target_arch = "wasm32"))]
++    #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+     pub(crate) fn into_reqwest(self) -> reqwest::Body {
+         match self.0 {
+             Inner::Bytes(b) => b.into(),
+--- a/src/client/http/spawn.rs
++++ b/src/client/http/spawn.rs
+@@ -125,7 +125,7 @@
+     }
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+--- a/src/client/http/connection.rs
++++ b/src/client/http/connection.rs
+@@ -84,9 +84,9 @@
+     }
+ 
+     pub(crate) fn reqwest(e: reqwest::Error) -> Self {
+-        #[cfg(not(target_arch = "wasm32"))]
++        #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+         let is_connect = || e.is_connect();
+-        #[cfg(target_arch = "wasm32")]
++        #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+         let is_connect = || false;
+ 
+         let mut kind = if e.is_timeout() {
+@@ -208,7 +208,7 @@
+ }
+ 
+ #[async_trait]
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ impl HttpService for reqwest::Client {
+     async fn call(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
+         let (parts, body) = req.into_parts();
+@@ -336,12 +336,12 @@
+ /// ```
+ #[derive(Debug)]
+ #[allow(missing_copy_implementations)]
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ pub struct SpawnedReqwestConnector {
+     runtime: Handle,
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ impl SpawnedReqwestConnector {
+     /// Create a new [`SpawnedReqwestConnector`] with the provided [`Handle`] to
+     /// a tokio [`Runtime`]
+@@ -352,7 +352,7 @@
+     }
+ }
+ 
+-#[cfg(not(target_arch = "wasm32"))]
++#[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
+ impl HttpConnector for SpawnedReqwestConnector {
+     fn connect(&self, options: &ClientOptions) -> crate::Result<HttpClient> {
+         let spawn_service = super::SpawnService::new(options.client()?, self.runtime.clone());

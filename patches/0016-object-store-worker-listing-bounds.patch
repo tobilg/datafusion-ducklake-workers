@@ -1,0 +1,46 @@
+diff --git a/src/aws/client.rs b/src/aws/client.rs
+--- a/src/aws/client.rs
++++ b/src/aws/client.rs
+@@ -943,10 +943,38 @@
+             .with_aws_sigv4(credential.authorizer(), None)
+             .send_retry(&self.config.retry_config)
+             .await
+-            .map_err(|source| Error::ListRequest { source })?
+-            .into_body()
+-            .bytes()
+-            .await
++            .map_err(|source| Error::ListRequest { source })?;
++
++        // Workers must bound metadata before XML decoding or whole-body buffering.
++        #[cfg(target_os = "emscripten")]
++        let response = {
++            use futures_util::TryStreamExt;
++            const MAX_LIST_BYTES: usize = 2 * 1024 * 1024;
++            let budget_error = || crate::Error::Generic {
++                store: STORE,
++                source: "Worker S3 listing response exceeds 2 MiB budget".into(),
++            };
++            if response.headers().get(CONTENT_LENGTH)
++                .and_then(|h| h.to_str().ok())
++                .and_then(|h| h.parse::<u64>().ok())
++                .is_some_and(|n| n > MAX_LIST_BYTES as u64)
++            {
++                return Err(budget_error());
++            }
++            let mut body = response.into_body().bytes_stream();
++            let mut data = bytes::BytesMut::new();
++            while let Some(chunk) = body.try_next().await
++                .map_err(|source| Error::ListResponseBody { source })?
++            {
++                if chunk.len() > MAX_LIST_BYTES.saturating_sub(data.len()) {
++                    return Err(budget_error());
++                }
++                data.extend_from_slice(&chunk);
++            }
++            data.freeze()
++        };
++        #[cfg(not(target_os = "emscripten"))]
++        let response = response.into_body().bytes().await
+             .map_err(|source| Error::ListResponseBody { source })?;
+ 
+         let mut response: ListResponse = quick_xml::de::from_reader(response.reader())

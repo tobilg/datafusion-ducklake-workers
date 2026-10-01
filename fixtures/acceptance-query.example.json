@@ -1,0 +1,4 @@
+{
+  "sql": "SELECT count(*), sum(id) FROM lake.main.sales",
+  "expected_rows": [["4500", "11250000"]]
+}

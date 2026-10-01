@@ -1,0 +1,10 @@
+--- a/src/rand.rs
++++ b/src/rand.rs
+@@ -127,6 +127,7 @@
+     target_os = "aix",
+     target_os = "android",
+     target_os = "dragonfly",
++    target_os = "emscripten",
+     target_os = "freebsd",
+     target_os = "fuchsia",
+     target_os = "haiku",

@@ -1,0 +1,9 @@
+{
+  "url": "https://raw.githubusercontent.com/apache/parquet-testing/56653c437c8092f704a092d0d1d4e600124cd49f/data/alltypes_plain.parquet",
+  "expected": [
+    [
+      "8",
+      "28"
+    ]
+  ]
+}

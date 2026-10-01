@@ -1,0 +1,78 @@
+diff --git a/worker-sys/src/types/r2/range.rs b/worker-sys/src/types/r2/range.rs
+index 8115c5e..f32bd6a 100644
+--- a/worker-sys/src/types/r2/range.rs
++++ b/worker-sys/src/types/r2/range.rs
+@@ -1,9 +1,16 @@
+ use wasm_bindgen::prelude::*;
+ 
+ #[wasm_bindgen]
+-#[derive(Debug, Clone)]
+-pub struct R2Range {
+-    pub offset: Option<f64>,
+-    pub length: Option<f64>,
+-    pub suffix: Option<f64>,
++extern "C" {
++    // R2 returns a plain JavaScript dictionary, not an exported Rust class.
++    #[wasm_bindgen(extends = js_sys::Object)]
++    #[derive(Debug, Clone)]
++    pub type R2Range;
++
++    #[wasm_bindgen(method, catch, getter)]
++    pub fn offset(this: &R2Range) -> Result<Option<f64>, JsValue>;
++    #[wasm_bindgen(method, catch, getter)]
++    pub fn length(this: &R2Range) -> Result<Option<f64>, JsValue>;
++    #[wasm_bindgen(method, catch, getter)]
++    pub fn suffix(this: &R2Range) -> Result<Option<f64>, JsValue>;
+ }
+diff --git a/worker/src/r2/builder.rs b/worker/src/r2/builder.rs
+index a05d016..6c823cb 100644
+--- a/worker/src/r2/builder.rs
++++ b/worker/src/r2/builder.rs
+@@ -145,19 +145,26 @@ impl TryFrom<R2RangeSys> for Range {
+     type Error = Error;
+ 
+     fn try_from(val: R2RangeSys) -> Result<Self> {
+-        Ok(match (val.offset, val.length, val.suffix) {
++        fn integer(value: Option<f64>) -> Result<Option<u64>> {
++            value.map(|v| {
++                if !v.is_finite() || v < 0.0 || v > MAX_SAFE_INTEGER as f64 || v.fract() != 0.0 {
++                    Err(Error::JsError("invalid R2 range integer".into()))
++                } else { Ok(v as u64) }
++            }).transpose()
++        }
++        Ok(match (integer(val.offset()?)?, integer(val.length()?)?, integer(val.suffix()?)?) {
+             (Some(offset), Some(length), None) => Self::OffsetWithLength {
+-                offset: offset.round() as u64,
+-                length: length.round() as u64,
++                offset,
++                length,
+             },
+             (Some(offset), None, None) => Self::OffsetToEnd {
+-                offset: offset.round() as u64,
++                offset,
+             },
+             (None, Some(length), None) => Self::Prefix {
+-                length: length.round() as u64,
++                length,
+             },
+             (None, None, Some(suffix)) => Self::Suffix {
+-                suffix: suffix.round() as u64,
++                suffix,
+             },
+             _ => return Err(Error::JsError("invalid range".into())),
+         })
+diff --git a/worker/src/r2/mod.rs b/worker/src/r2/mod.rs
+index 2e6eb1d..6be1ac5 100644
+--- a/worker/src/r2/mod.rs
++++ b/worker/src/r2/mod.rs
+@@ -266,8 +266,8 @@ impl Object {
+ 
+     pub fn range(&self) -> Result<Range> {
+         match &self.inner {
+-            ObjectInner::NoBody(inner) => inner.range().unwrap(),
+-            ObjectInner::Body(inner) => inner.range().unwrap(),
++            ObjectInner::NoBody(inner) => inner.range()?,
++            ObjectInner::Body(inner) => inner.range()?,
+         }
+         .try_into()
+     }

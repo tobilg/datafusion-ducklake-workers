@@ -1,0 +1,102 @@
+diff --git a/examples/emscripten-tcp/Cargo.lock b/examples/emscripten-tcp/Cargo.lock
+index e46bab2..ca29d4d 100644
+--- a/examples/emscripten-tcp/Cargo.lock
++++ b/examples/emscripten-tcp/Cargo.lock
+@@ -309,7 +309,6 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+ [[package]]
+ name = "mio"
+ version = "1.2.3"
+-source = "git+https://github.com/guybedford/mio?tag=1.2.3-cf.emscripten#0788dbb67883cb6191503af999471def54e3fb77"
+ dependencies = [
+  "libc",
+  "wasi",
+@@ -710,7 +709,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "worker"
+-version = "0.8.6"
++version = "0.8.7"
+ dependencies = [
+  "async-trait",
+  "bytes",
+@@ -739,7 +738,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "worker-macros"
+-version = "0.8.6"
++version = "0.8.7"
+ dependencies = [
+  "async-trait",
+  "proc-macro2",
+@@ -753,7 +752,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "worker-sys"
+-version = "0.8.6"
++version = "0.8.7"
+ dependencies = [
+  "cfg-if",
+  "js-sys",
+diff --git a/examples/emscripten-tcp/Cargo.toml b/examples/emscripten-tcp/Cargo.toml
+index 7aa4ebd..e1410f4 100644
+--- a/examples/emscripten-tcp/Cargo.toml
++++ b/examples/emscripten-tcp/Cargo.toml
+@@ -27,4 +27,4 @@ tokio = { git = "https://github.com/guybedford/tokio", tag = "1.53.1-cf.emscript
+ tokio-macros = { git = "https://github.com/guybedford/tokio", tag = "1.53.1-cf.emscripten" }
+ 
+ # Pending https://github.com/tokio-rs/mio/pull/1969
+-mio = { git = "https://github.com/guybedford/mio", tag = "1.2.3-cf.emscripten" }
++mio = { path = "../../../mio" }
+diff --git a/examples/emscripten-tokio/Cargo.lock b/examples/emscripten-tokio/Cargo.lock
+index 142ba86..41afb1a 100644
+--- a/examples/emscripten-tokio/Cargo.lock
++++ b/examples/emscripten-tokio/Cargo.lock
+@@ -660,7 +660,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "worker"
+-version = "0.8.6"
++version = "0.8.7"
+ dependencies = [
+  "async-trait",
+  "bytes",
+@@ -689,7 +689,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "worker-macros"
+-version = "0.8.6"
++version = "0.8.7"
+ dependencies = [
+  "async-trait",
+  "proc-macro2",
+@@ -703,7 +703,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "worker-sys"
+-version = "0.8.6"
++version = "0.8.7"
+ dependencies = [
+  "cfg-if",
+  "js-sys",
+@@ -809,8 +809,3 @@ source = "git+https://github.com/rust-lang/libc?branch=libc-0.2#b29beb056cb7cea5
+ name = "mio"
+ version = "1.2.3"
+ source = "git+https://github.com/guybedford/mio?tag=1.2.3-cf.emscripten#0788dbb67883cb6191503af999471def54e3fb77"
+-
+-[[patch.unused]]
+-name = "libc"
+-version = "0.2.189"
+-source = "git+https://github.com/rust-lang/libc?branch=libc-0.2#b29beb056cb7cea51dd1b9e68342e30a956951a9"
+diff --git a/examples/emscripten-tokio/Cargo.toml b/examples/emscripten-tokio/Cargo.toml
+index 244cd64..5460c9a 100644
+--- a/examples/emscripten-tokio/Cargo.toml
++++ b/examples/emscripten-tokio/Cargo.toml
+@@ -18,8 +18,6 @@ opt-level = "s"
+ 
+ # REQUIRED Patchset - Tokio patchset, pending upstream PRs
+ # Pending libc@0.2.190
+-[patch."https://github.com/guybedford/libc"]
+-libc = { git = "https://github.com/rust-lang/libc", branch = "libc-0.2" }
+ [patch.crates-io]
+ libc = { git = "https://github.com/rust-lang/libc", branch = "libc-0.2" }
+ 

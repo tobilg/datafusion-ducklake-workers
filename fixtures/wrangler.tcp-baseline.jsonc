@@ -1,0 +1,9 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "emscripten-tcp-local-baseline",
+  "main": "../vendor/workers-rs/examples/emscripten-tcp/build/full/index.js",
+  "compatibility_date": "2026-09-02",
+  "compatibility_flags": ["new_module_registry"],
+  "workers_dev": false,
+  "preview_urls": false
+}

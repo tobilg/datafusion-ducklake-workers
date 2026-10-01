@@ -1,0 +1,382 @@
+diff --git a/crates/ducklake-storage/src/backend/quack.rs b/crates/ducklake-storage/src/backend/quack.rs
+index e30d0cf..3f9b2bf 100644
+--- a/crates/ducklake-storage/src/backend/quack.rs
++++ b/crates/ducklake-storage/src/backend/quack.rs
+@@ -792,7 +792,12 @@ impl QuackCatalog {
+         let mut chunks = prepare.results;
+ 
+         if prepare.needs_more_fetch {
++            let mut fetches = 0usize;
+             loop {
++                fetches += 1;
++                if fetches > 4 || chunks.iter().map(|c| c.rows.len()).sum::<usize>() > 16384 {
++                    return Err(StorageError::Backend("Quack metadata fetch budget exceeded".into()));
++                }
+                 let response = client
+                     .send(&connection.fetch_request(result_uuid))
+                     .await
+diff --git a/crates/ducklake-storage/src/backend/quack_protocol.rs b/crates/ducklake-storage/src/backend/quack_protocol.rs
+index 8d845d3..bbc5e38 100644
+--- a/crates/ducklake-storage/src/backend/quack_protocol.rs
++++ b/crates/ducklake-storage/src/backend/quack_protocol.rs
+@@ -388,6 +388,7 @@ pub(crate) struct DuckDbBinaryReader<'a> {
+     input: &'a [u8],
+     position: usize,
+     buffered_field: Option<u16>,
++    worker_budget: usize,
+ }
+ 
+ impl<'a> DuckDbBinaryReader<'a> {
+@@ -396,9 +397,27 @@ impl<'a> DuckDbBinaryReader<'a> {
+             input,
+             position: 0,
+             buffered_field: None,
++            worker_budget: 8 * 1024 * 1024,
+         }
+     }
+ 
++    fn charge(&mut self, bytes: usize) -> Result<()> {
++        if cfg!(target_os = "emscripten") {
++            self.worker_budget = self.worker_budget.checked_sub(bytes)
++                .ok_or_else(|| StorageError::Backend("Worker metadata allocation budget exceeded".into()))?;
++        }
++        Ok(())
++    }
++    fn vector<T>(&mut self, count: usize) -> Result<Vec<T>> {
++        self.charge(count.saturating_mul(std::mem::size_of::<T>()))?;
++        Ok(Vec::with_capacity(count))
++    }
++    fn clone_value(&mut self, value: &DuckDbValue) -> Result<DuckDbValue> {
++        let bytes = match value { DuckDbValue::Utf8(s) | DuckDbValue::Type(s) => s.len(), DuckDbValue::Blob(b) => b.len(), _ => 0 };
++        self.charge(bytes)?;
++        Ok(value.clone())
++    }
++
+     pub(crate) fn finish(self) -> Result<()> {
+         if self.position == self.input.len() && self.buffered_field.is_none() {
+             return Ok(());
+@@ -498,8 +517,8 @@ impl<'a> DuckDbBinaryReader<'a> {
+         if !self.consume_optional_field(field_id)? {
+             return Ok(Vec::new());
+         }
+-        let count = self.read_unsigned_leb128()? as usize;
+-        let mut values = Vec::with_capacity(count);
++        let count = self.read_usize()?;
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(self.read_string()?);
+         }
+@@ -514,10 +533,8 @@ impl<'a> DuckDbBinaryReader<'a> {
+         if !self.consume_optional_field(field_id)? {
+             return Ok(Vec::new());
+         }
+-        let count = self.read_unsigned_leb128()?;
+-        let count = usize::try_from(count)
+-            .map_err(|_| StorageError::Backend("DuckDB list length exceeds usize".into()))?;
+-        let mut values = Vec::with_capacity(count);
++        let count = self.read_usize()?;
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(self.read_logical_type()?.type_name());
+         }
+@@ -527,6 +544,9 @@ impl<'a> DuckDbBinaryReader<'a> {
+     pub(crate) fn read_logical_type(&mut self) -> Result<DuckDbLogicalType> {
+         self.read_property_begin(100, "id")?;
+         let type_id = self.read_unsigned_leb128()?;
++        if cfg!(target_os = "emscripten") && type_id >= 100 {
++            return Err(StorageError::Unsupported("Nested Quack metadata values are unsupported in Worker".into()));
++        }
+         let mut logical_type = duckdb_logical_type(type_id)?;
+         if self.consume_optional_field(101)? {
+             logical_type.extra_info = self.read_nullable_extra_type_info()?;
+@@ -706,6 +726,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+     }
+ 
+     pub(crate) fn read_parsed_expression(&mut self) -> Result<DuckDbParsedExpression> {
++        if cfg!(target_os = "emscripten") { return Err(StorageError::Unsupported("Quack expression objects are unsupported in Worker".into())); }
+         let header = self.read_parsed_expression_base()?;
+         self.read_parsed_expression_body(header, "UnboundTypeInfo")
+     }
+@@ -920,7 +941,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             return Ok(Vec::new());
+         }
+         let count = self.read_usize()?;
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             let present = self.read_u8()? != 0;
+             if !present {
+@@ -944,7 +965,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             return Ok(Vec::new());
+         }
+         let count = self.read_usize()?;
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             let when_expr = self.read_optional_parsed_expression_box_property(100, "when_expr")?;
+             let then_expr = self.read_optional_parsed_expression_box_property(101, "then_expr")?;
+@@ -966,7 +987,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             return Ok(Vec::new());
+         }
+         let count = self.read_usize()?;
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(self.read_duckdb_value()?);
+         }
+@@ -1185,7 +1206,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+                 child_types.len()
+             )));
+         }
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for child_type in child_types {
+             values.push(self.read_duckdb_value_with_expected_type(Some(&child_type.logical_type))?);
+         }
+@@ -1207,7 +1228,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+                 "DuckDB ARRAY Value child count mismatch: expected {expected_count}, got {count}"
+             )));
+         }
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(self.read_duckdb_value_with_expected_type(Some(child_type))?);
+         }
+@@ -1268,7 +1289,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             return Ok(Vec::new());
+         }
+         let count = self.read_usize()?;
+-        let mut chunks = Vec::with_capacity(count);
++        let mut chunks = self.vector(count)?;
+         for _ in 0..count {
+             chunks.push(self.read_data_chunk_wrapper()?);
+         }
+@@ -1302,7 +1323,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             return Ok(Vec::new());
+         }
+         let count = self.read_usize()?;
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(self.read_logical_type()?);
+         }
+@@ -1318,7 +1339,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             return Ok(Vec::new());
+         }
+         let count = self.read_usize()?;
+-        let mut children = Vec::with_capacity(count);
++        let mut children = self.vector(count)?;
+         for _ in 0..count {
+             self.read_property_begin(0, "first")?;
+             let name = self.read_string()?;
+@@ -1332,7 +1353,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+ 
+     pub(crate) fn read_string_list(&mut self) -> Result<Vec<String>> {
+         let count = self.read_usize()?;
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(self.read_string()?);
+         }
+@@ -1358,7 +1379,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+ 
+         self.read_property_begin(101, "types")?;
+         let column_count = self.read_usize()?;
+-        let mut logical_types = Vec::with_capacity(column_count);
++        let mut logical_types = self.vector(column_count)?;
+         for _ in 0..column_count {
+             logical_types.push(self.read_logical_type()?);
+         }
+@@ -1373,7 +1394,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             )));
+         }
+ 
+-        let mut columns = Vec::with_capacity(serialized_columns);
++        let mut columns = self.vector(serialized_columns)?;
+         for logical_type in &logical_types {
+             let column = self.read_vector(logical_type, row_count)?;
+             self.read_object_end()?;
+@@ -1381,11 +1402,11 @@ impl<'a> DuckDbBinaryReader<'a> {
+         }
+         self.read_object_end()?;
+ 
+-        let mut rows = Vec::with_capacity(row_count);
++        let mut rows = self.vector(row_count)?;
+         for row_idx in 0..row_count {
+-            let mut row = Vec::with_capacity(columns.len());
++            let mut row = self.vector(columns.len())?;
+             for column in &columns {
+-                row.push(column[row_idx].clone());
++                row.push(self.clone_value(&column[row_idx])?);
+             }
+             rows.push(row);
+         }
+@@ -1409,6 +1430,9 @@ impl<'a> DuckDbBinaryReader<'a> {
+         } else {
+             0
+         };
++        if cfg!(target_os = "emscripten") && vector_type != 0 {
++            return Err(StorageError::Unsupported("Compressed Quack metadata vectors are unsupported in Worker".into()));
++        }
+         match vector_type {
+             0 => self.read_flat_vector(logical_type, row_count),
+             2 => {
+@@ -1443,7 +1467,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+         let dict_count = self.read_usize()?;
+         let dictionary = self.read_vector(logical_type, dict_count)?;
+ 
+-        let mut values = Vec::with_capacity(row_count);
++        let mut values = self.vector(row_count)?;
+         for row_idx in 0..row_count {
+             let selection =
+                 usize::try_from(read_u32_le(&sel_vector, row_idx * 4)?).map_err(|_| {
+@@ -1455,7 +1479,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+                     dictionary.len()
+                 ))
+             })?;
+-            values.push(value.clone());
++            values.push(self.clone_value(value)?);
+         }
+         Ok(values)
+     }
+@@ -1469,7 +1493,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+         let start = self.read_signed_leb128()?;
+         self.read_property_begin(92, "seq_increment")?;
+         let increment = self.read_signed_leb128()?;
+-        let mut values = Vec::with_capacity(row_count);
++        let mut values = self.vector(row_count)?;
+         for row_idx in 0..row_count {
+             let offset = i64::try_from(row_idx).map_err(|_| {
+                 StorageError::Backend("DuckDB sequence row index exceeds i64".into())
+@@ -1551,14 +1575,14 @@ impl<'a> DuckDbBinaryReader<'a> {
+             )));
+         }
+ 
+-        let mut child_columns = Vec::with_capacity(child_count);
++        let mut child_columns = self.vector(child_count)?;
+         for child in children {
+             let values = self.read_vector(&child.logical_type, row_count)?;
+             self.read_object_end()?;
+             child_columns.push((&child.name, values));
+         }
+ 
+-        let mut rows = Vec::with_capacity(row_count);
++        let mut rows = self.vector(row_count)?;
+         for row_idx in 0..row_count {
+             let mut fields = Vec::with_capacity(child_columns.len());
+             for (name, values) in &child_columns {
+@@ -1585,7 +1609,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+                 "DuckDB list entry count mismatch: expected {row_count}, got {entry_count}"
+             )));
+         }
+-        let mut entries = Vec::with_capacity(entry_count);
++        let mut entries = self.vector(entry_count)?;
+         for _ in 0..entry_count {
+             self.read_property_begin(100, "offset")?;
+             let offset = self.read_usize()?;
+@@ -1599,7 +1623,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+         let child_values = self.read_vector(child_type, list_size)?;
+         self.read_object_end()?;
+ 
+-        let mut values = Vec::with_capacity(row_count);
++        let mut values = self.vector(row_count)?;
+         for entry in entries {
+             let end = entry
+                 .offset
+@@ -1642,7 +1666,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+         let child_values = self.read_vector(child_type, child_count)?;
+         self.read_object_end()?;
+ 
+-        let mut rows = Vec::with_capacity(row_count);
++        let mut rows = self.vector(row_count)?;
+         for row_idx in 0..row_count {
+             let start = row_idx * array_size;
+             let end = start + array_size;
+@@ -1664,7 +1688,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+                 "DuckDB string vector row count mismatch: expected {row_count}, got {count}"
+             )));
+         }
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for row_idx in 0..count {
+             let bytes = self.read_blob()?;
+             if validity.is_some_and(|validity| !duckdb_validity_row_is_valid(validity, row_idx)) {
+@@ -1694,7 +1718,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+                 "DuckDB blob vector row count mismatch: expected {row_count}, got {count}"
+             )));
+         }
+-        let mut values = Vec::with_capacity(count);
++        let mut values = self.vector(count)?;
+         for _ in 0..count {
+             values.push(DuckDbValue::Blob(self.read_blob()?.to_vec()));
+         }
+@@ -1702,7 +1726,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+     }
+ 
+     pub(crate) fn decode_fixed_width_vector(
+-        &self,
++        &mut self,
+         logical_type: &DuckDbLogicalType,
+         physical_type: DuckDbPhysicalType,
+         row_count: usize,
+@@ -1719,7 +1743,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+             )));
+         }
+ 
+-        let mut values = Vec::with_capacity(row_count);
++        let mut values = self.vector(row_count)?;
+         for row_idx in 0..row_count {
+             let start = row_idx * width;
+             let value = match logical_type.id {
+@@ -1818,6 +1842,7 @@ impl<'a> DuckDbBinaryReader<'a> {
+ 
+     pub(crate) fn read_blob(&mut self) -> Result<&'a [u8]> {
+         let len = self.read_usize()?;
++        self.charge(len)?;
+         self.read_exact(len)
+     }
+ 
+@@ -1947,6 +1972,9 @@ impl<'a> DuckDbBinaryReader<'a> {
+ 
+     pub(crate) fn read_usize(&mut self) -> Result<usize> {
+         let value = self.read_unsigned_leb128()?;
++        if cfg!(target_os = "emscripten") && value > 16384 {
++            return Err(StorageError::Backend("Worker metadata count/field exceeds 16384".into()));
++        }
+         usize::try_from(value)
+             .map_err(|_| StorageError::Backend("DuckDB integer value exceeds usize".into()))
+     }
+@@ -3401,7 +3429,11 @@ impl QuackHttpClient {
+ 
+     pub(crate) async fn send_unvalidated(&self, request: &QuackRequest) -> Result<QuackResponse> {
+         let request_body = request.to_duckdb_binary()?;
+-        let response = reqwest::Client::new()
++        let mut response = reqwest::Client::builder()
++            .redirect(reqwest::redirect::Policy::none())
++            .connect_timeout(std::time::Duration::from_secs(3))
++            .timeout(std::time::Duration::from_secs(5))
++            .build().map_err(|_| StorageError::Backend("Quack HTTP client configuration failed".into()))?
+             .post(self.endpoint())
+             .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+             .body(request_body)
+@@ -3410,9 +3442,17 @@ impl QuackHttpClient {
+             .map_err(|err| StorageError::Backend(format!("failed to send Quack request: {err}")))?;
+ 
+         let status = response.status();
+-        let response_body = response.bytes().await.map_err(|err| {
+-            StorageError::Backend(format!("failed to read Quack response body: {err}"))
+-        })?;
++        const MAX_BODY: usize = 2 * 1024 * 1024;
++        if response.content_length().is_some_and(|n| n > MAX_BODY as u64) {
++            return Err(StorageError::Backend("Quack response exceeds 2 MiB".into()));
++        }
++        let mut response_body = Vec::new();
++        while let Some(chunk) = response.chunk().await.map_err(|_| StorageError::Backend("Failed to read Quack response".into()))? {
++            if chunk.len() > MAX_BODY.saturating_sub(response_body.len()) {
++                return Err(StorageError::Backend("Quack response exceeds 2 MiB".into()));
++            }
++            response_body.extend_from_slice(&chunk);
++        }
+         if !status.is_success() {
+             return Err(StorageError::Backend(format!(
+                 "Quack server returned HTTP status {status}"

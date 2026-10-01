@@ -1,0 +1,75 @@
+--- a/src/file/serialized_reader.rs
++++ b/src/file/serialized_reader.rs
+@@ -396,6 +396,12 @@
+     physical_type: Type,
+     decompressor: Option<&mut Box<dyn Codec>>,
+ ) -> Result<Page> {
++    // Worker pilot: fail before allocating a decompression buffer. Object ranges
++    // are bounded separately; a tiny compressed page can still expand greatly.
++    #[cfg(target_os = "emscripten")]
++    if page_header.uncompressed_page_size < 0 || page_header.uncompressed_page_size > 8 * 1024 * 1024 {
++        return Err(general_err!("Worker Parquet page exceeds 8 MiB decompression budget"));
++    }
+     // Verify the 32-bit CRC checksum of the page
+     #[cfg(feature = "crc")]
+     if let Some(expected_crc) = page_header.crc {
+--- a/src/compression.rs
++++ b/src/compression.rs
+@@ -141,6 +141,21 @@
+     }
+ }
+ 
++// Streaming codecs must not grow a Vec beyond the page's declared size on Workers.
++#[cfg(target_os = "emscripten")]
++fn worker_decompress(mut reader: impl std::io::Read, output: &mut Vec<u8>, expected: Option<usize>) -> Result<usize> {
++    let cap = expected.unwrap_or(8 * 1024 * 1024).min(8 * 1024 * 1024);
++    let mut total = 0usize;
++    let mut chunk = [0u8; 8192];
++    loop {
++        let n = reader.read(&mut chunk)?;
++        if n == 0 { return Ok(total); }
++        if n > cap.saturating_sub(total) { return Err(ParquetError::General("Worker decompression budget exceeded".into())); }
++        output.extend_from_slice(&chunk[..n]);
++        total += n;
++    }
++}
++
+ /// Given the compression type `codec`, returns a codec used to compress and decompress
+ /// bytes for the compression type.
+ /// This returns `None` if the codec type is `UNCOMPRESSED`.
+@@ -284,6 +299,9 @@
+             _uncompress_size: Option<usize>,
+         ) -> Result<usize> {
+             let mut decoder = read::MultiGzDecoder::new(input_buf);
++            #[cfg(target_os = "emscripten")]
++            return super::worker_decompress(decoder, output_buf, _uncompress_size);
++            #[cfg(not(target_os = "emscripten"))]
+             decoder.read_to_end(output_buf).map_err(|e| e.into())
+         }
+ 
+@@ -390,9 +408,11 @@
+             uncompress_size: Option<usize>,
+         ) -> Result<usize> {
+             let buffer_size = uncompress_size.unwrap_or(BROTLI_DEFAULT_BUFFER_SIZE);
+-            brotli::Decompressor::new(input_buf, buffer_size)
+-                .read_to_end(output_buf)
+-                .map_err(|e| e.into())
++            let decoder = brotli::Decompressor::new(input_buf, buffer_size);
++            #[cfg(target_os = "emscripten")]
++            return super::worker_decompress(decoder, output_buf, uncompress_size);
++            #[cfg(not(target_os = "emscripten"))]
++            { let mut decoder = decoder; decoder.read_to_end(output_buf).map_err(|e| e.into()) }
+         }
+ 
+         fn compress(&mut self, input_buf: &[u8], output_buf: &mut Vec<u8>) -> Result<()> {
+@@ -472,6 +492,10 @@
+                 let len = decoder.read(&mut buffer)?;
+                 if len == 0 {
+                     break;
++                }
++                #[cfg(target_os = "emscripten")]
++                if total_len + len > _uncompress_size.unwrap_or(8 * 1024 * 1024).min(8 * 1024 * 1024) {
++                    return Err(ParquetError::General("Worker decompression budget exceeded".into()));
+                 }
+                 total_len += len;
+                 output_buf.write_all(&buffer[0..len])?;

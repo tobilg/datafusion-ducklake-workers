@@ -1,0 +1,88 @@
+--- a/datafusion-datasource-arrow/src/file_format.rs
++++ b/datafusion-datasource-arrow/src/file_format.rs
+@@ -143,6 +143,12 @@
+         for object in objects {
+             let r = store.as_ref().get(&object.location).await?;
+             let schema = match r.payload {
++                #[cfg(target_os = "emscripten")]
++                GetResultPayload::File(_, _) => {
++                    return Err(DataFusionError::NotImplemented(
++                        "Local file payloads are disabled on Emscripten".into(),
++                    ));
++                }
+                 #[cfg(not(target_arch = "wasm32"))]
+                 GetResultPayload::File(mut file, _) => {
+                     match FileReader::try_new(&mut file, None) {
+--- a/datafusion-datasource-arrow/src/source.rs
++++ b/datafusion-datasource-arrow/src/source.rs
+@@ -86,6 +86,12 @@
+                 .await?;
+ 
+             let stream = match r.payload {
++                #[cfg(target_os = "emscripten")]
++                GetResultPayload::File(_, _) => {
++                    return Err(datafusion_common::DataFusionError::NotImplemented(
++                        "Local file payloads are disabled on Emscripten".into(),
++                    ));
++                }
+                 #[cfg(not(target_arch = "wasm32"))]
+                 GetResultPayload::File(file, _) => futures::stream::iter(
+                     StreamReader::try_new(file.try_clone()?, projection.clone())?,
+@@ -128,6 +134,12 @@
+                         .get(&partitioned_file.object_meta.location)
+                         .await?;
+                     let stream = match r.payload {
++                        #[cfg(target_os = "emscripten")]
++                        GetResultPayload::File(_, _) => {
++                            return Err(datafusion_common::DataFusionError::NotImplemented(
++                                "Local file payloads are disabled on Emscripten".into(),
++                            ));
++                        }
+                         #[cfg(not(target_arch = "wasm32"))]
+                         GetResultPayload::File(file, _) => futures::stream::iter(
+                             FileReader::try_new(file.try_clone()?, projection.clone())?,
+--- a/datafusion-datasource-csv/src/source.rs
++++ b/datafusion-datasource-csv/src/source.rs
+@@ -463,6 +463,12 @@
+             let result = store.get_opts(&location, options).await?;
+ 
+             match result.payload {
++                #[cfg(target_os = "emscripten")]
++                GetResultPayload::File(_, _) => {
++                    return Err(DataFusionError::NotImplemented(
++                        "Local file payloads are disabled on Emscripten".into(),
++                    ));
++                }
+                 #[cfg(not(target_arch = "wasm32"))]
+                 GetResultPayload::File(file, _) => {
+                     let decoder = file_compression_type.convert_read(file)?;
+--- a/datafusion-datasource-json/src/file_format.rs
++++ b/datafusion-datasource-json/src/file_format.rs
+@@ -275,6 +275,12 @@
+             let r = store.as_ref().get(&object.location).await?;
+ 
+             let (schema, records_consumed) = match r.payload {
++                #[cfg(target_os = "emscripten")]
++                GetResultPayload::File(_, _) => {
++                    return Err(datafusion_common::DataFusionError::NotImplemented(
++                        "Local file payloads are disabled on Emscripten".into(),
++                    ));
++                }
+                 #[cfg(not(target_arch = "wasm32"))]
+                 GetResultPayload::File(file, _) => {
+                     let decoder = file_compression_type.convert_read(file)?;
+--- a/datafusion-datasource-json/src/source.rs
++++ b/datafusion-datasource-json/src/source.rs
+@@ -372,6 +372,12 @@
+             let result = store.get_opts(location, options).await?;
+ 
+             match result.payload {
++                #[cfg(target_os = "emscripten")]
++                GetResultPayload::File(_, _) => {
++                    return Err(DataFusionError::NotImplemented(
++                        "Local file payloads are disabled on Emscripten".into(),
++                    ));
++                }
+                 #[cfg(not(target_arch = "wasm32"))]
+                 GetResultPayload::File(file, _) => {
+                     let bytes = file_compression_type.convert_read(file)?;

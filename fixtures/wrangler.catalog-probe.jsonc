@@ -1,0 +1,25 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "datafusion-catalog-local-probe",
+  "main": "../build/full/index.js",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": [
+    "new_module_registry"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "r2_buckets": [
+    {
+      "binding": "CATALOG_R2",
+      "bucket_name": "quacklake-fixture"
+    }
+  ],
+  "vars": {
+    "QUACK_URI": "quack:127.0.0.1:8792",
+    "CATALOG_DATA_PATH": "r2://quacklake-fixture/catalogs/fixture/",
+    "STORAGE_BACKEND": "r2_binding",
+    "CATALOG_BUCKET": "quacklake-fixture",
+    "CATALOG_ID": "fixture",
+    "ALLOW_LOCAL_HTTP": "true"
+  }
+}

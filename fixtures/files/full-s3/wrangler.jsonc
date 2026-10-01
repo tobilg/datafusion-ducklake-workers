@@ -1,0 +1,17 @@
+{
+  "name": "datafusion-files-full-s3",
+  "main": "../../../build/full/index.js",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": [
+    "new_module_registry"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "QUERY_MODE": "files",
+    "ALLOW_LOCAL_HTTP": "true",
+    "S3_ENDPOINT": "http://127.0.0.1:9000",
+    "S3_REGION": "us-east-1",
+    "S3_ADDRESSING_STYLE": "path"
+  }
+}

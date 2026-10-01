@@ -1,0 +1,58 @@
+[
+  {
+    "file": "0001-worker-build-cargo-1100-snippets.patch",
+    "source": "workers-rs"
+  },
+  {
+    "file": "0002-reqwest-emscripten-native-transport.patch",
+    "source": "reqwest"
+  },
+  {
+    "file": "0003-ring-emscripten-getentropy.patch",
+    "source": "ring"
+  },
+  {
+    "file": "0004-object-store-emscripten-http.patch",
+    "source": "object_store"
+  },
+  {
+    "file": "0005-datafusion-emscripten-no-local-files.patch",
+    "source": "."
+  },
+  {
+    "file": "0006-provider-worker-features-and-read-only-api.patch",
+    "source": "datafusion-ducklake-provider"
+  },
+  {
+    "file": "0008-workers-r2-range-dictionary.patch",
+    "source": "workers-rs"
+  },
+  {
+    "file": "0009-quack-worker-response-bounds.patch",
+    "source": "datafusion-ducklake-provider"
+  },
+  {
+    "file": "0010-parquet-worker-decompression-bounds.patch",
+    "source": "parquet"
+  },
+  {
+    "file": "0011-official-example-lockfiles.patch",
+    "source": "workers-rs"
+  },
+  {
+    "file": "0013-provider-empty-schema-history.patch",
+    "source": "datafusion-ducklake-provider"
+  },
+  {
+    "file": "0014-worker-runtime-request-cleanup.patch",
+    "source": "workers-rs"
+  },
+  {
+    "file": "0015-mio-emscripten-rust-198-fd-clone.patch",
+    "source": "mio"
+  },
+  {
+    "file": "0016-object-store-worker-listing-bounds.patch",
+    "source": "object_store"
+  }
+]

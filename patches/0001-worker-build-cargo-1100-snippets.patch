@@ -1,0 +1,67 @@
+diff --git a/worker-build/src/build/mod.rs b/worker-build/src/build/mod.rs
+index e7247fb..4b49eaa 100644
+--- a/worker-build/src/build/mod.rs
++++ b/worker-build/src/build/mod.rs
+@@ -471,8 +471,7 @@ impl Build {
+         )?;
+         // wasm-bindgen inline JS snippets are written beside the link output,
+         // which cargo does not uplift alongside the js and wasm.
+-        let snippets = out.join("deps/snippets");
+-        if snippets.is_dir() {
++        if let Some(snippets) = emscripten::snippet_dir(&out, &js)? {
+             copy_dir(&snippets, &self.out_dir.join("snippets"))?;
+         }
+         Ok(())
+diff --git a/worker-build/src/emscripten.rs b/worker-build/src/emscripten.rs
+index cb0c76f..5cfce8d 100644
+--- a/worker-build/src/emscripten.rs
++++ b/worker-build/src/emscripten.rs
+@@ -68,6 +68,25 @@ pub struct Toolchain {
+     pub em_config: PathBuf,
+ }
+ 
++/// Cargo 1.100 places native link output in build/<package>/<hash>/out,
++/// then uplifts only the JS/WASM. Match the exact uplifted JS, never a stale
++/// hash directory, before collecting wasm-bindgen's companion snippets.
++pub fn snippet_dir(out: &Path, js: &str) -> Result<Option<PathBuf>> {
++    let pattern = format!("{}/build/*/*/out/*.js", glob::Pattern::escape(&out.to_string_lossy()));
++    for candidate in glob::glob(&pattern)? {
++        let candidate = candidate?;
++        if fs::read_to_string(&candidate)? == js {
++            let snippets = candidate.parent().unwrap().join("snippets");
++            if snippets.is_dir() {
++                return Ok(Some(snippets));
++            }
++        }
++    }
++    // Layout used by the beta on which the upstream builder was introduced.
++    let legacy = out.join("deps/snippets");
++    Ok(legacy.is_dir().then_some(legacy))
++}
++
+ impl Toolchain {
+     pub fn emcc(&self) -> PathBuf {
+         self.emscripten_dir.join("emcc")
+@@ -252,6 +271,22 @@ fn emsdk_node(emsdk: &Path) -> Option<PathBuf> {
+ mod test {
+     use super::*;
+ 
++    #[test]
++    fn snippets_follow_exact_link_output() {
++        let dir = std::env::temp_dir().join(format!("wb-snippets-{}", std::process::id()));
++        let stale = dir.join("build/app/aaa/out");
++        let current = dir.join("build/app/bbb/out");
++        fs::create_dir_all(stale.join("snippets")).unwrap();
++        fs::create_dir_all(current.join("snippets")).unwrap();
++        fs::write(stale.join("app.js"), "old JS").unwrap();
++        fs::write(current.join("app.js"), "current JS").unwrap();
++        assert_eq!(snippet_dir(&dir, "current JS").unwrap(), Some(current.join("snippets")));
++        assert_eq!(snippet_dir(&dir, "unmatched JS").unwrap(), None);
++        fs::create_dir_all(dir.join("deps/snippets")).unwrap();
++        assert_eq!(snippet_dir(&dir, "legacy JS").unwrap(), Some(dir.join("deps/snippets")));
++        fs::remove_dir_all(dir).unwrap();
++    }
++
+     #[test]
+     fn embedded_patches_parse() {
+         for (name, contents) in PATCHES {

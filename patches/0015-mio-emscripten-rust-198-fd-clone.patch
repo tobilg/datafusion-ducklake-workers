@@ -1,0 +1,24 @@
+diff --git a/src/sys/unix/selector/epoll.rs b/src/sys/unix/selector/epoll.rs
+index 29e36b7..ca5605f 100644
+--- a/src/sys/unix/selector/epoll.rs
++++ b/src/sys/unix/selector/epoll.rs
+@@ -35,7 +35,18 @@ impl Selector {
+     }
+ 
+     pub fn try_clone(&self) -> io::Result<Selector> {
+-        self.ep.try_clone().map(|ep| Selector {
++        // Rust 1.98's OwnedFd::try_clone returns Unsupported on all wasm32.
++        // Emscripten supports fcntl duplication through the managed SDK.
++        #[cfg(target_os = "emscripten")]
++        let ep = {
++            let fd = syscall!(fcntl(self.ep.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 3))?;
++            // SAFETY: successful fcntl returns a new, owned descriptor. OwnedFd
++            // closes it on drop; the original descriptor remains independently owned.
++            Ok(unsafe { OwnedFd::from_raw_fd(fd) })
++        };
++        #[cfg(not(target_os = "emscripten"))]
++        let ep = self.ep.try_clone();
++        ep.map(|ep| Selector {
+             // It's the same selector, so we use the same id.
+             #[cfg(debug_assertions)]
+             id: self.id,

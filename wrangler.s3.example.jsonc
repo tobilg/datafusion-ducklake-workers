@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "datafusion-quacklake-s3-unconfigured",
+  "main": "build/full/index.js",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": [
+    "new_module_registry"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "build": {
+    "command": "bash scripts/build.sh --variant full"
+  },
+  "limits": {
+    "cpu_ms": 30000
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "QUERY_MODE": "ducklake",
+    "STORAGE_BACKEND": "s3",
+    "QUACK_URI": "quack:catalog.example.com:443",
+    "CATALOG_ID": "analytics",
+    "CATALOG_BUCKET": "replace-with-your-bucket",
+    "CATALOG_DATA_PATH": "r2://replace-with-your-bucket/catalogs/analytics/",
+    "S3_ENDPOINT": "https://replace-with-your-account.r2.cloudflarestorage.com",
+    "S3_BUCKET": "replace-with-your-bucket",
+    "S3_REGION": "auto",
+    "S3_ADDRESSING_STYLE": "path"
+  }
+}

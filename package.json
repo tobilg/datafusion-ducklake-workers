@@ -1,0 +1,27 @@
+{
+  "name": "datafusion-quacklake-workers",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "22.22.2"
+  },
+  "devDependencies": {
+    "miniflare": "5.20260926.0-alpha",
+    "wrangler": "4.143.0",
+    "ws": "8.21.0"
+  },
+  "license": "MIT",
+  "description": "Build and development tools for the DataFusion Cloudflare Worker",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tobilg/datafusion-quacklake-workers.git"
+  },
+  "scripts": {
+    "check": "python3 scripts/validate.py",
+    "test": "python3 scripts/validate.py --suite files --variant core --backend r2",
+    "build:core": "bash scripts/build.sh --variant core",
+    "build:full": "bash scripts/build.sh --variant full",
+    "bootstrap": "bash scripts/bootstrap.sh",
+    "dev": "python3 scripts/local-api-key.py && WORKER_LINK_OPT=1 wrangler dev --config wrangler.core.jsonc --local"
+  }
+}

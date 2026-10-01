@@ -1,0 +1,28 @@
+[package]
+name = "emscripten-https-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+worker = { path = "../../vendor/workers-rs/worker", features = ["experimental_tokio"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt", "time"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls"] }
+ring = "=0.17.14"
+
+[profile.release]
+opt-level = "s"
+
+[patch."https://github.com/guybedford/libc"]
+libc = { path = "../../vendor/libc" }
+[patch."https://github.com/rust-lang/libc"]
+libc = { path = "../../vendor/libc" }
+[patch.crates-io]
+libc = { path = "../../vendor/libc" }
+reqwest = { path = "../../vendor/reqwest" }
+ring = { path = "../../vendor/ring" }
+tokio = { git = "https://github.com/guybedford/tokio", rev = "7227f2d72739c3bc9821074cc704e7582be92907" }
+tokio-macros = { git = "https://github.com/guybedford/tokio", rev = "7227f2d72739c3bc9821074cc704e7582be92907" }
+mio = { path = "../../vendor/mio" }
