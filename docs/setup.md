@@ -2,14 +2,16 @@
 
 Start with the [core quickstart](../README.md). The application build requires
 Git, rustup, a C compiler, ripgrep, Python 3.12+ and Node 22.22.2/npm 10.9.7.
-Python 3.14 and macOS arm64 were used locally. Linux runs static and native policy
-checks in CI; the Worker build there remains unverified. Windows build scripts
-are unsupported. Use Bash for shell scripts.
+Python 3.14 and macOS arm64 were used locally. CI uses Linux for every job,
+including Worker builds; hosted execution remains unverified. Windows build
+scripts are unsupported. Use Bash for shell scripts.
 
 `bash scripts/bootstrap.sh` fetches pinned runtime sources, applies the active
 patch series, installs Rust 1.98.0 with rustfmt and the Emscripten target, runs
-`npm ci`, and builds the pinned worker-build tool. It preserves existing source
-checkouts. It does not fetch the QuackLake service unless `--fixtures` is supplied.
+`npm ci`, and builds or reuses the pinned worker-build tool. Reuse requires matching
+input and executable hashes; source verification still runs. New Git checkouts
+fetch only the pinned revision and required submodules. Existing checkouts are
+preserved. It does not fetch the QuackLake service unless `--fixtures` is supplied.
 The provider checkout remains necessary for Cargo's optional dependency resolution.
 
 The managed SDK supplies Emscripten and the required networking patches. Do not
@@ -46,8 +48,68 @@ absent. Artifact checks repeat verification against the recorded source digest.
 For release checks, run `bash scripts/dependency-graphs.sh core`,
 `bash scripts/size.sh core` and `python3 scripts/check-artifacts.py --variant core --tests`,
 then repeat for full. Run both file transports first for the `--tests` check.
+The size command requires an existing production build and verifies its source,
+input and module hashes before and after Wrangler's dry-run. It omits the custom
+build command in a temporary adjacent config, preserves relative paths, and
+never recompiles. Stale artifacts fail with a request to rebuild first.
 `python3 scripts/verify-patches.py --fixtures` also checks the separate catalog
 and an installed MinIO source checkout. Generated reports stay ignored.
+
+Successful CI build jobs upload `datafusion-worker-core-<commit>` and
+`datafusion-worker-full-<commit>` under the workflow run's **Artifacts** section,
+with 3-day retention for PRs and 14 days otherwise. Each archive contains the contents of `build/<variant>/`,
+including WASM, the JavaScript entrypoint, package metadata and compatibility
+shim. Keep these files together; the WASM is not a standalone Worker. Uploads
+exclude temporary build files and diagnostic variants. Deployment still requires
+your own Wrangler configuration, bindings and secrets.
+
+## CI speed, cache and build layout
+
+Quick checks run on every PR and main-branch push. Only changes limited to known
+root prose files or Markdown under `docs/` skip Worker jobs. Deleted/renamed
+source files, unknown paths, workflow changes and unavailable Git history all
+cause full validation. Manual runs always validate both variants.
+All CI jobs use Ubuntu 24.04: Worker builds use arm64 runners, while quick
+checks and the final validation job use x64 runners.
+Use the final **Validation** job as the required branch-protection check so a
+documentation-only change can complete successfully.
+
+Normal runs restore separate caches for pinned tools/managed SDK, package
+downloads, and compiled dependencies. Keys include OS/architecture and relevant
+pins, locks and patches; compiled outputs also use the variant and commit, with
+fallback only within the same dependency key. Only successful main-branch jobs
+save caches. PRs only restore. The matrix has one writer for each shared cache.
+Do not cache fixture state, generated credentials, deployment artifacts or the
+entire workspace. Cache hits never replace source verification or test execution.
+The host tool helper also rejects changed binaries, changed inputs or a different
+architecture. Source-built MinIO is reused with the same checks.
+
+Keep the repository's default cache storage limit; these workflows do not raise
+it or enable paid overflow. Old entries can be evicted. Package/tool caches are
+shared between variants; compiled dependency caches stay separate. The first
+parallel run can still build tools twice while the common caches are empty.
+The `shared` layout below bootstraps once and reuses Cargo dependencies between
+variants in the same job.
+
+Manual **Run workflow** inputs:
+
+| Input | Default | Purpose |
+| --- | --- | --- |
+| `fresh` | `false` | Set `true` to disable all cache restores and saves. |
+| `layout` | `parallel` | Select `shared` to build/test core and full on one runner. |
+
+Fresh runs check project builds on a new hosted runner. Runner-provided tooling
+can still exist; this does not guarantee an empty machine.
+
+Each Worker job reports phase durations, exit status, available disk and maximum
+child-process RSS in the Actions summary. Use actual total job durations for
+runner cost comparisons; phase timings exclude cache transfers and provisioning.
+RSS is a host-process measurement, not isolate or whole-job memory accounting.
+Compare the same commit with parallel/shared layouts and warm/fresh caches.
+Both layouts execute the same correctness suites and are not allowed to pass on
+failure. The complete Linux build, size, file, catalog and probe suites still
+need hosted validation. Neither a Linux container inspection nor the native
+policy tests establish that compatibility.
 
 ## File integration tests
 

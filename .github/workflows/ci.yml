@@ -4,41 +4,77 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      fresh:
+        description: Disable all CI cache restores and saves
+        type: boolean
+        default: false
+      layout:
+        description: Parallel variants or one runner sharing compilation/setup
+        type: choice
+        options: [parallel, shared]
+        default: parallel
 permissions:
   contents: read
 concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}
+  group: validate-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   quick:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      workers: ${{ steps.plan.outputs.workers }}
+      use_cache: ${{ steps.plan.outputs.use_cache }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14.7'
+      - id: plan
+        run: python3 scripts/ci_changes.py
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .node-version
           package-manager-cache: false
       - run: npm install --global npm@10.9.7
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - id: native-cache
+        if: steps.plan.outputs.use_cache == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          python-version: '3.14.7'
+          path: |
+            ~/.cargo/registry
+            tests/native/target
+          key: native-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'tests/native/Cargo.lock') }}
       - run: rustup toolchain install 1.98.0 --profile minimal --component rustfmt
       - run: npm run check
       - run: git diff --exit-code
+      - if: steps.plan.outputs.use_cache == 'true' && github.ref == 'refs/heads/main' && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            tests/native/target
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
   worker:
     needs: quick
-    runs-on: macos-15
+    if: needs.quick.outputs.workers == 'true'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     strategy:
       fail-fast: false
-      matrix:
-        variant: [core, full]
+      matrix: ${{ fromJSON(needs.quick.outputs.matrix) }}
     env:
       CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
       WRANGLER_SEND_METRICS: 'false'
+      CI_USE_CACHE: ${{ needs.quick.outputs.use_cache }}
+      CI_VARIANT: ${{ matrix.variant }}
+      CI_PNPM_STORE_DIR: ${{ github.workspace }}/.cache/pnpm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -47,36 +83,164 @@ jobs:
         with:
           node-version-file: .node-version
           package-manager-cache: false
-      - run: npm install --global npm@10.9.7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14.7'
-      - run: brew install ripgrep
-      - run: bash scripts/bootstrap.sh
-      - run: python3 scripts/install-duckdb.py
+      - id: tool-cache
+        if: env.CI_USE_CACHE == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .tools/bin/worker-build
+            .tools/bin/minio
+            .tools/bin/duckdb
+            .tools/cache
+            ~/.cache/worker-build
+          key: tools-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools.lock.json', 'sources.lock.json', 'rust-toolchain.toml', 'patches/**', 'fixtures/*.lock.json', 'scripts/tool_cache.py', 'scripts/bootstrap.sh', 'scripts/sources.py', 'scripts/build-minio.sh', 'scripts/install-duckdb.py') }}
+      - id: download-cache
+        if: env.CI_USE_CACHE == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.npm/_cacache
+            .cache/npm
+            .cache/pnpm
+          key: downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'package-lock.json', 'sources.lock.json', 'tools.lock.json') }}
+      - id: build-key
+        run: echo "prefix=build-v1-${RUNNER_OS}-${RUNNER_ARCH}-${CI_VARIANT}-${DEPENDENCIES}-" >> "$GITHUB_OUTPUT"
+        env:
+          DEPENDENCIES: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'repro/**/Cargo.lock', 'tests/native/Cargo.lock', 'rust-toolchain.toml', 'sources.lock.json', 'tools.lock.json', 'patches/**') }}
+      - id: build-cache
+        if: env.CI_USE_CACHE == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target
+            repro/catalog-native/target
+          key: ${{ steps.build-key.outputs.prefix }}${{ github.sha }}
+          restore-keys: ${{ steps.build-key.outputs.prefix }}
+      - name: Install system prerequisites
+        shell: bash
+        run: |
+          if ! command -v rg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep
+          fi
+          df -h .
+      - run: npm install --global npm@10.9.7
+      - run: python3 scripts/ci_run.py bootstrap bash scripts/bootstrap.sh
+      - run: python3 scripts/ci_run.py duckdb python3 scripts/tool_cache.py duckdb -- python3 scripts/install-duckdb.py
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: '1.25.3'
           cache: false
-      - run: bash scripts/build-minio.sh --native
-      - run: bash scripts/build.sh --variant ${{ matrix.variant }}
-      - run: bash scripts/dependency-graphs.sh ${{ matrix.variant }}
-      - run: python3 scripts/verify-patches.py
-      - run: python3 scripts/validate.py --suite files --variant ${{ matrix.variant }} --backend all --skip-build
-      - run: bash scripts/size.sh ${{ matrix.variant }}
-      - run: python3 scripts/check-artifacts.py --variant ${{ matrix.variant }} --tests
-      - if: matrix.variant == 'full'
-        run: npm install --global pnpm@12.4.2
-      - if: matrix.variant == 'full'
-        run: bash scripts/build-quacklake.sh
-      - if: matrix.variant == 'full'
-        run: python3 scripts/validate.py --suite catalog --backend all --skip-build
-      - if: matrix.variant == 'full'
+      - run: python3 scripts/ci_run.py minio bash scripts/build-minio.sh --native
+      - name: Build selected release variants
+        shell: bash
         run: |
-          WORKER_LINK_OPT=1 bash scripts/build.sh --variant core --features protocol-probe
-          WORKER_LINK_OPT=1 bash scripts/build.sh --variant full --features protocol-probe
-          python3 scripts/validate.py --suite probes --skip-build
-      - if: matrix.variant == 'full'
+          variants="$CI_VARIANT"
+          if [[ "$variants" == all ]]; then variants='core full'; fi
+          for variant in $variants; do
+            python3 scripts/ci_run.py "build-$variant" bash scripts/build.sh --variant "$variant"
+            bash scripts/dependency-graphs.sh "$variant"
+          done
+      - run: python3 scripts/ci_run.py files python3 scripts/validate.py --suite files --variant "$CI_VARIANT" --backend all --skip-build
+      - name: Measure verified releases without rebuilding
+        shell: bash
+        run: |
+          variants="$CI_VARIANT"
+          if [[ "$variants" == all ]]; then variants='core full'; fi
+          for variant in $variants; do
+            python3 scripts/check-artifacts.py --variant "$variant" --tests
+            python3 scripts/ci_run.py "size-$variant" bash scripts/size.sh "$variant"
+          done
+      - if: matrix.variant != 'core'
+        run: npm install --global pnpm@12.4.2
+      - if: matrix.variant != 'core'
+        run: python3 scripts/ci_run.py quacklake bash scripts/build-quacklake.sh
+      - if: matrix.variant != 'core'
+        run: python3 scripts/ci_run.py catalog python3 scripts/validate.py --suite catalog --backend all --skip-build
+      - if: matrix.variant != 'core'
+        run: |
+          WORKER_LINK_OPT=1 python3 scripts/ci_run.py build-core-probe bash scripts/build.sh --variant core --features protocol-probe
+          WORKER_LINK_OPT=1 python3 scripts/ci_run.py build-full-probe bash scripts/build.sh --variant full --features protocol-probe
+          python3 scripts/ci_run.py probes python3 scripts/validate.py --suite probes --skip-build
+      - if: matrix.variant != 'core'
         run: python3 scripts/verify-patches.py --fixtures
       - run: python3 scripts/check-release.py
       - run: git diff --exit-code
+      # Only successful main-branch jobs populate caches. PRs restore but never save.
+      # One matrix writer per shared cache avoids duplicate uploads.
+      - if: env.CI_USE_CACHE == 'true' && github.ref == 'refs/heads/main' && matrix.variant != 'full' && steps.tool-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .tools/bin/worker-build
+            .tools/bin/minio
+            .tools/bin/duckdb
+            .tools/cache
+            ~/.cache/worker-build
+          key: ${{ steps.tool-cache.outputs.cache-primary-key }}
+      - if: env.CI_USE_CACHE == 'true' && github.ref == 'refs/heads/main' && matrix.variant != 'core' && steps.download-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.npm/_cacache
+            .cache/npm
+            .cache/pnpm
+          key: ${{ steps.download-cache.outputs.cache-primary-key }}
+      - if: env.CI_USE_CACHE == 'true' && github.ref == 'refs/heads/main' && steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target
+            repro/catalog-native/target
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
+      - name: Upload core Worker bundle
+        if: matrix.variant != 'full'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: datafusion-worker-core-${{ github.sha }}
+          path: |
+            build/core/
+            !build/core/.tmp/**
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 14 }}
+          include-hidden-files: false
+      - name: Upload full Worker bundle
+        if: matrix.variant != 'core'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: datafusion-worker-full-${{ github.sha }}
+          path: |
+            build/full/
+            !build/full/.tmp/**
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 3 || 14 }}
+          include-hidden-files: false
+      - name: Summarize timings and resource observations
+        if: always()
+        run: python3 scripts/ci_run.py --summary
+  validation:
+    name: Validation
+    needs: [quick, worker]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require checks or an intentional documentation-only skip
+        env:
+          QUICK_RESULT: ${{ needs.quick.result }}
+          WORKER_RESULT: ${{ needs.worker.result }}
+          WORKERS_REQUIRED: ${{ needs.quick.outputs.workers }}
+        run: |
+          test "$QUICK_RESULT" = success
+          if [[ "$WORKERS_REQUIRED" == true ]]; then
+            test "$WORKER_RESULT" = success
+          else
+            test "$WORKER_RESULT" = skipped
+          fi

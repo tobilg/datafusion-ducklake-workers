@@ -15,7 +15,7 @@ export GOCACHE="$PROJECT_ROOT/.cache/go-build" GOMODCACHE="$PROJECT_ROOT/.cache/
 if [[ "$mode" == --native ]]; then
   export GOOS="$(go env GOHOSTOS)" GOARCH="$(go env GOHOSTARCH)"
   mkdir -p "$PROJECT_ROOT/.tools/bin"
-  go build -mod=readonly -trimpath -ldflags='-s -w' -o "$PROJECT_ROOT/.tools/bin/minio" .
+  python3 "$PROJECT_ROOT/scripts/tool_cache.py" minio -- go build -mod=readonly -trimpath -ldflags='-s -w' -o "$PROJECT_ROOT/.tools/bin/minio" .
   exit 0
 fi
 export GOOS=linux GOARCH="${MINIO_FIXTURE_ARCH:-arm64}"

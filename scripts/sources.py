@@ -53,14 +53,27 @@ def main():
             continue
         if not path.exists():
             path.parent.mkdir(exist_ok=True)
-            subprocess.run(["git", "clone", source["url"], str(path)], check=True)
+            # Only the pinned tree is needed for builds and archive verification.
+            # Existing checkouts are never reset or made shallow by this path.
+            run("git", "init", "--quiet", str(path))
+            run("git", "-C", str(path), "remote", "add", "origin", source["url"])
+            run("git", "-C", str(path), "fetch", "--depth=1", "origin", source["rev"])
             run("git", "-C", str(path), "checkout", "--detach", source["rev"])
         if run("git", "-C", str(path), "rev-parse", "HEAD") != source["rev"]:
             raise SystemExit(
                 f"{name}: unexpected revision; preserve and inspect manually"
             )
         if source.get("submodules"):
-            run("git", "-C", str(path), "submodule", "update", "--init", "--recursive")
+            run(
+                "git",
+                "-C",
+                str(path),
+                "submodule",
+                "update",
+                "--init",
+                "--recursive",
+                "--depth=1",
+            )
         print(f"{name}: {source['rev']}")
 
 
