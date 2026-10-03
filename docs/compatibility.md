@@ -17,16 +17,16 @@ sessions and the managed SDK. It does not create a nested Tokio runtime.
 | Managed Emscripten / wasm-bindgen / wasm-opt | 6.0.10 / 0.2.129 / 132 |
 
 Full source/tool and preview Tokio/mio/libc pins are in `sources.lock.json`,
-`tools.lock.json`, `Cargo.lock` and `package-lock.json`. Fourteen compatibility
-patches remain necessary at these pins; see [their rationale](../patches/README.md).
+`tools.lock.json`, `Cargo.lock` and `package-lock.json`. Compatibility patches
+remain necessary at these pins; see [their rationale](../patches/README.md).
 QuackLake includes the UUID casting fix upstream and needs no downstream patch.
 Its upstream Worker test runner has a Vitest/pool version mismatch at this pin;
 the local integration runner exercises the actual service/provider independently.
 
-macOS arm64 was exercised locally. Linux and fresh GitHub Actions runs remain
-unverified until those workflows execute successfully. Historical reports and
-measurements have been removed; generate current results with the commands in
-[setup](setup.md). A local test, dry-run or SELECT 1 is not deployed acceptance.
+Linux arm64 builds and integration suites have passed GitHub Actions; macOS arm64
+is also exercised locally. Check the current commit's [CI results](https://github.com/tobilg/datafusion-ducklake-workers/actions/workflows/ci.yml)
+and generate local results with the commands in [setup](setup.md). Historical
+reports are not distributed. A local test, dry-run or SELECT 1 is not deployed acceptance.
 
 For a public release, record the final source revision and run both variant
 builds, dependency checks, the local file/catalog suites and size checks. The

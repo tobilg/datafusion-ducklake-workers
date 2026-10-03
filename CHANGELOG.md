@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-10-03
 
+- Project/package names, repository links and local fixture names use
+  `datafusion-ducklake-workers` (Rust package: `datafusion-ducklake-worker`).
 - Core and full Rust DataFusion Workers on the pinned Emscripten/Tokio stack.
 - Read-only Parquet queries over native R2, explicit S3 and public HTTPS.
 - Optional DuckLake metadata through QuackLake with canonical R2 paths.
@@ -12,6 +14,8 @@
 - Cached CI tooling/dependencies, documentation-only build gating, verified size
   measurements without rebuilding, manual uncached checks and build layout
   comparisons with phase timings. All CI jobs use Linux.
+- Shared core/full CI builds by default, with parallel builds available manually.
+- Focused dependency patches for Rust lifetime and target/feature-gating warnings.
 
 Initial release status is experimental. Cloud acceptance and hosted CI execution
 must be recorded separately; historical validation files are not distributed.

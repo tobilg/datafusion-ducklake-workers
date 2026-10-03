@@ -1271,7 +1271,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "datafusion-quacklake-worker"
+name = "datafusion-ducklake-worker"
 version = "0.1.0"
 dependencies = [
  "async-trait",

@@ -1,11 +1,11 @@
 [package]
-name = "datafusion-quacklake-worker"
+name = "datafusion-ducklake-worker"
 version = "0.1.0"
 edition = "2024"
 publish = false
 license = "MIT"
 description = "Read-only DataFusion SQL on Cloudflare Workers, with optional DuckLake catalogs"
-repository = "https://github.com/tobilg/datafusion-quacklake-workers"
+repository = "https://github.com/tobilg/datafusion-ducklake-workers"
 readme = "README.md"
 
 [dependencies]

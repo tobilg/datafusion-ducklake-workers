@@ -58,7 +58,7 @@ def changed_paths(event_name, event, head, run=subprocess.check_output):
 
 def routing(event_name, event, head):
     inputs = event.get("inputs", {}) if event_name == "workflow_dispatch" else {}
-    layout = inputs.get("layout", "parallel")
+    layout = inputs.get("layout", "shared")
     if layout not in ("parallel", "shared"):
         raise ValueError("Unsupported CI layout")
     paths = changed_paths(event_name, event, head)

@@ -22,4 +22,4 @@ export GOOS=linux GOARCH="${MINIO_FIXTURE_ARCH:-arm64}"
 mkdir -p "$PROJECT_ROOT/.cache/minio-image"
 go build -mod=readonly -trimpath -ldflags='-s -w' -o "$PROJECT_ROOT/.cache/minio-image/minio" .
 cp "$PROJECT_ROOT/fixtures/minio.Dockerfile" "$PROJECT_ROOT/.cache/minio-image/Dockerfile"
-docker build --network=none -t datafusion-quacklake-minio:07c3a429 "$PROJECT_ROOT/.cache/minio-image"
+docker build --network=none -t datafusion-ducklake-minio:07c3a429 "$PROJECT_ROOT/.cache/minio-image"

@@ -9,5 +9,10 @@ publish = false
 [lib]
 path = "policies.rs"
 
+[features]
+# The shared policy source uses these application feature names in cfg gates.
+ducklake = []
+protocol-probe = []
+
 [dependencies]
 url = "=2.5.8"

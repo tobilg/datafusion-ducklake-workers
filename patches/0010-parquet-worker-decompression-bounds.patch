@@ -18,7 +18,7 @@
 @@ -141,6 +141,21 @@
      }
  }
- 
+
 +// Streaming codecs must not grow a Vec beyond the page's declared size on Workers.
 +#[cfg(target_os = "emscripten")]
 +fn worker_decompress(mut reader: impl std::io::Read, output: &mut Vec<u8>, expected: Option<usize>) -> Result<usize> {
@@ -37,17 +37,46 @@
  /// Given the compression type `codec`, returns a codec used to compress and decompress
  /// bytes for the compression type.
  /// This returns `None` if the codec type is `UNCOMPRESSED`.
-@@ -284,6 +299,9 @@
+@@ -255,7 +270,9 @@
+ #[cfg(any(feature = "flate2", test))]
+ mod gzip_codec {
+
+-    use std::io::{Read, Write};
++    #[cfg(not(target_os = "emscripten"))]
++    use std::io::Read;
++    use std::io::Write;
+
+     use flate2::{Compression, read, write};
+
+@@ -283,8 +300,14 @@
+             output_buf: &mut Vec<u8>,
              _uncompress_size: Option<usize>,
          ) -> Result<usize> {
-             let mut decoder = read::MultiGzDecoder::new(input_buf);
+-            let mut decoder = read::MultiGzDecoder::new(input_buf);
+-            decoder.read_to_end(output_buf).map_err(|e| e.into())
++            let decoder = read::MultiGzDecoder::new(input_buf);
 +            #[cfg(target_os = "emscripten")]
 +            return super::worker_decompress(decoder, output_buf, _uncompress_size);
 +            #[cfg(not(target_os = "emscripten"))]
-             decoder.read_to_end(output_buf).map_err(|e| e.into())
++            {
++                let mut decoder = decoder;
++                decoder.read_to_end(output_buf).map_err(|e| e.into())
++            }
          }
- 
-@@ -390,9 +408,11 @@
+
+         fn compress(&mut self, input_buf: &[u8], output_buf: &mut Vec<u8>) -> Result<()> {
+@@ -360,7 +383,9 @@
+ #[cfg(any(feature = "brotli", test))]
+ mod brotli_codec {
+
+-    use std::io::{Read, Write};
++    #[cfg(not(target_os = "emscripten"))]
++    use std::io::Read;
++    use std::io::Write;
+
+     use crate::compression::Codec;
+     use crate::errors::Result;
+@@ -390,9 +415,11 @@
              uncompress_size: Option<usize>,
          ) -> Result<usize> {
              let buffer_size = uncompress_size.unwrap_or(BROTLI_DEFAULT_BUFFER_SIZE);
@@ -60,9 +89,9 @@
 +            #[cfg(not(target_os = "emscripten"))]
 +            { let mut decoder = decoder; decoder.read_to_end(output_buf).map_err(|e| e.into()) }
          }
- 
+
          fn compress(&mut self, input_buf: &[u8], output_buf: &mut Vec<u8>) -> Result<()> {
-@@ -472,6 +492,10 @@
+@@ -472,6 +499,10 @@
                  let len = decoder.read(&mut buffer)?;
                  if len == 0 {
                      break;

@@ -1,4 +1,6 @@
-use crate::{api::ApiError, path_policy::PathPolicy};
+use crate::api::ApiError;
+#[cfg(feature = "ducklake")]
+use crate::path_policy::PathPolicy;
 use worker::Env;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -8,12 +10,14 @@ pub enum QueryMode {
 }
 pub struct Config {
     pub mode: QueryMode,
+    #[cfg(feature = "ducklake")]
     pub catalog: Option<CatalogConfig>,
     pub rows: usize,
     pub bytes: usize,
     pub timeout_ms: u64,
     pub memory_bytes: usize,
 }
+#[cfg(feature = "ducklake")]
 pub struct CatalogConfig {
     pub uri: String,
     pub ssl: bool,
@@ -21,6 +25,7 @@ pub struct CatalogConfig {
     pub policy: PathPolicy,
     pub backend: String,
 }
+#[cfg(feature = "ducklake")]
 impl CatalogConfig {
     fn load(env: &Env) -> Result<Self, ApiError> {
         let var = |key| {
@@ -81,6 +86,7 @@ impl Config {
             "ducklake" if cfg!(feature = "ducklake") => QueryMode::DuckLake,
             _ => return Err(ApiError::config()),
         };
+        #[cfg(feature = "ducklake")]
         let catalog = if mode == QueryMode::DuckLake {
             Some(CatalogConfig::load(env)?)
         } else {
@@ -102,6 +108,7 @@ impl Config {
         }
         Ok(Self {
             mode,
+            #[cfg(feature = "ducklake")]
             catalog,
             rows: limit(env, "MAX_RESULT_ROWS", 1000)?,
             bytes: limit(env, "MAX_RESPONSE_BYTES", 1048576)?,

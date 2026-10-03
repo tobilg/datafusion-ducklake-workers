@@ -1,0 +1,64 @@
+--- a/datafusion-datasource-arrow/src/file_format.rs
++++ b/datafusion-datasource-arrow/src/file_format.rs
+@@ -21,12 +21,14 @@
+
+ use std::collections::HashMap;
+ use std::fmt::{self, Debug};
++#[cfg(not(target_arch = "wasm32"))]
+ use std::io::{Seek, SeekFrom};
+ use std::sync::Arc;
+
+ use arrow::datatypes::{Schema, SchemaRef};
+ use arrow::error::ArrowError;
+ use arrow::ipc::convert::fb_to_schema;
++#[cfg(not(target_arch = "wasm32"))]
+ use arrow::ipc::reader::{FileReader, StreamReader};
+ use arrow::ipc::writer::IpcWriteOptions;
+ use arrow::ipc::{CompressionType, root_as_message};
+--- a/datafusion-datasource-csv/src/source.rs
++++ b/datafusion-datasource-csv/src/source.rs
+@@ -21,6 +21,7 @@
+ use datafusion_datasource::projection::{ProjectionOpener, SplitProjection};
+ use datafusion_physical_plan::projection::ProjectionExprs;
+ use std::fmt;
++#[cfg(not(target_arch = "wasm32"))]
+ use std::io::Read;
+ use std::sync::Arc;
+
+@@ -180,6 +181,7 @@
+ }
+
+ impl CsvSource {
++    #[cfg(not(target_arch = "wasm32"))]
+     fn open<R: Read>(&self, reader: R) -> Result<csv::Reader<R>> {
+         Ok(self.builder().build(reader)?)
+     }
+@@ -414,7 +416,8 @@
+         let store = Arc::clone(&self.object_store);
+         let terminator = self.config.terminator();
+
+-        let baseline_metrics =
++        // Register metrics on every target; only native File payloads use the timer.
++        let _baseline_metrics =
+             BaselineMetrics::new(&self.config.metrics, self.partition_index);
+
+         Ok(Box::pin(async move {
+@@ -476,7 +479,7 @@
+
+                     // Use std::iter::from_fn to wrap execution of iterator's next() method.
+                     let iterator = std::iter::from_fn(move || {
+-                        let mut timer = baseline_metrics.elapsed_compute().timer();
++                        let mut timer = _baseline_metrics.elapsed_compute().timer();
+                         let result = reader.next();
+                         timer.stop();
+                         result
+--- a/datafusion-datasource-json/src/source.rs
++++ b/datafusion-datasource-json/src/source.rs
+@@ -17,6 +17,7 @@
+
+ //! Execution plan for reading JSON files (line-delimited and array formats)
+
++#[cfg(not(target_arch = "wasm32"))]
+ use std::io::BufReader;
+ use std::pin::Pin;
+ use std::sync::Arc;

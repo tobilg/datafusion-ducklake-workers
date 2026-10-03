@@ -3,8 +3,8 @@
 Start with the [core quickstart](../README.md). The application build requires
 Git, rustup, a C compiler, ripgrep, Python 3.12+ and Node 22.22.2/npm 10.9.7.
 Python 3.14 and macOS arm64 were used locally. CI uses Linux for every job,
-including Worker builds; hosted execution remains unverified. Windows build
-scripts are unsupported. Use Bash for shell scripts.
+including validated Worker builds on arm64. Windows build scripts are
+unsupported. Use Bash for shell scripts.
 
 `bash scripts/bootstrap.sh` fetches pinned runtime sources, applies the active
 patch series, installs Rust 1.98.0 with rustfmt and the Emscripten target, runs
@@ -86,17 +86,18 @@ architecture. Source-built MinIO is reused with the same checks.
 
 Keep the repository's default cache storage limit; these workflows do not raise
 it or enable paid overflow. Old entries can be evicted. Package/tool caches are
-shared between variants; compiled dependency caches stay separate. The first
-parallel run can still build tools twice while the common caches are empty.
-The `shared` layout below bootstraps once and reuses Cargo dependencies between
-variants in the same job.
+shared between variants. The default `shared` layout bootstraps once and builds
+core and full sequentially in the same job, reusing compiled dependencies when
+their features and compiler settings match. The optional `parallel` layout uses
+separate compilation caches and can build tools twice while common caches are
+empty. Shared and parallel layouts use distinct compilation cache keys.
 
 Manual **Run workflow** inputs:
 
 | Input | Default | Purpose |
 | --- | --- | --- |
 | `fresh` | `false` | Set `true` to disable all cache restores and saves. |
-| `layout` | `parallel` | Select `shared` to build/test core and full on one runner. |
+| `layout` | `shared` | Build/test core and full on one runner; select `parallel` for separate runners. |
 
 Fresh runs check project builds on a new hosted runner. Runner-provided tooling
 can still exist; this does not guarantee an empty machine.
@@ -107,9 +108,9 @@ runner cost comparisons; phase timings exclude cache transfers and provisioning.
 RSS is a host-process measurement, not isolate or whole-job memory accounting.
 Compare the same commit with parallel/shared layouts and warm/fresh caches.
 Both layouts execute the same correctness suites and are not allowed to pass on
-failure. The complete Linux build, size, file, catalog and probe suites still
-need hosted validation. Neither a Linux container inspection nor the native
-policy tests establish that compatibility.
+failure. Linux CI covers the complete build, size, file, catalog and probe
+suites. Check each commit's run before using its artifacts; passing CI does not
+establish deployed startup or isolate capacity.
 
 ## File integration tests
 

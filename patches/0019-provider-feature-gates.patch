@@ -1,0 +1,69 @@
+--- a/crates/ducklake-storage/src/catalog/async/query_methods.rs
++++ b/crates/ducklake-storage/src/catalog/async/query_methods.rs
+@@ -7,6 +7,7 @@
+ use crate::embedded_rows::EmbeddedRow;
+
+ pub(crate) enum ReadQueryRender {
++    #[cfg(any(feature = "sqlite", feature = "duckdb"))]
+     Embedded,
+     #[cfg(feature = "postgres")]
+     Postgres,
+@@ -38,6 +39,7 @@
+
+     fn render_read_query<T>(&self, query: &ReadQuery<T>) -> String {
+         match self.read_query_render() {
++            #[cfg(any(feature = "sqlite", feature = "duckdb"))]
+             ReadQueryRender::Embedded => query.render_embedded(),
+             #[cfg(feature = "postgres")]
+             ReadQueryRender::Postgres => query.render_postgres(
+--- a/crates/ducklake-storage/src/catalog/ddl.rs
++++ b/crates/ducklake-storage/src/catalog/ddl.rs
+@@ -464,6 +464,7 @@
+     statements
+ }
+
++#[cfg(any(feature = "sqlite", feature = "duckdb", feature = "postgres"))]
+ pub(crate) fn render_initialization_batch(
+     qualifier: Option<&str>,
+     bootstrap: &CatalogBootstrap,
+--- a/crates/ducklake-storage/src/catalog/initialization_methods.rs
++++ b/crates/ducklake-storage/src/catalog/initialization_methods.rs
+@@ -66,6 +66,7 @@
+ }
+
+ impl CatalogInitializationRequest {
++    #[cfg(any(feature = "sqlite", feature = "duckdb"))]
+     pub(crate) fn execute_sync_session<S, Exists, Load, Create>(
+         self,
+         session: &mut S,
+--- a/crates/ducklake-storage/src/lib.rs
++++ b/crates/ducklake-storage/src/lib.rs
+@@ -876,7 +876,7 @@
+
+ #[path = "catalog/path.rs"]
+ mod catalog_path;
+-#[cfg(any(feature = "sqlite", feature = "quack"))]
++#[cfg(any(feature = "sqlite", all(test, feature = "quack")))]
+ pub(crate) use catalog_path::join_cleanup_path_components;
+ #[cfg(feature = "sqlite")]
+ pub(crate) use catalog_path::resolve_catalog_file_path;
+--- a/crates/ducklake-storage/src/metadata/option.rs
++++ b/crates/ducklake-storage/src/metadata/option.rs
+@@ -11,6 +11,7 @@
+ #[cfg(feature = "quack")]
+ use crate::MetadataOptionScope;
+
++#[cfg(any(feature = "sqlite", feature = "duckdb", feature = "postgres"))]
+ pub(crate) enum MetadataPlaceholderStyle {
+     /// `?1`, `?2`, ... (SQLite, DuckDB-file).
+     #[cfg(any(feature = "sqlite", feature = "duckdb"))]
+--- a/crates/ducklake-storage/src/sql_utils.rs
++++ b/crates/ducklake-storage/src/sql_utils.rs
+@@ -6,6 +6,7 @@
+         .join(", ")
+ }
+
++#[cfg(any(feature = "sqlite", feature = "duckdb", feature = "postgres"))]
+ pub(crate) fn current_time_micros() -> crate::Result<i64> {
+     let micros = std::time::SystemTime::now()
+         .duration_since(std::time::UNIX_EPOCH)

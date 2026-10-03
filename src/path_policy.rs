@@ -23,6 +23,7 @@ impl PathPolicy {
         })
     }
 
+    #[cfg(any(feature = "ducklake", feature = "protocol-probe", test))]
     pub fn new(bucket: &str, catalog: &str, data_path: &str) -> Result<Self, &'static str> {
         if !(3..=63).contains(&bucket.len())
             || !bucket

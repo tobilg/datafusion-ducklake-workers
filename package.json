@@ -1,5 +1,5 @@
 {
-  "name": "datafusion-quacklake-workers",
+  "name": "datafusion-ducklake-workers",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -14,7 +14,7 @@
   "description": "Build and development tools for the DataFusion Cloudflare Worker",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tobilg/datafusion-quacklake-workers.git"
+    "url": "https://github.com/tobilg/datafusion-ducklake-workers.git"
   },
   "scripts": {
     "check": "python3 scripts/validate.py",

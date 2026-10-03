@@ -7,11 +7,13 @@ use std::sync::Arc;
 use url::Url;
 
 /// A sealed request-owned registry: no filesystem default, discovery or replacement.
+#[cfg(any(feature = "ducklake", feature = "protocol-probe"))]
 #[derive(Debug)]
 pub struct CatalogRegistry {
     pub bucket: String,
     pub store: Arc<dyn ObjectStore>,
 }
+#[cfg(any(feature = "ducklake", feature = "protocol-probe"))]
 impl ObjectStoreRegistry for CatalogRegistry {
     fn register_store(&self, _: &Url, _: Arc<dyn ObjectStore>) -> Option<Arc<dyn ObjectStore>> {
         // This API cannot return an error. Retain the configured store unconditionally.

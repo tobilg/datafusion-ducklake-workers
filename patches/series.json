@@ -54,5 +54,21 @@
   {
     "file": "0016-object-store-worker-listing-bounds.patch",
     "source": "object_store"
+  },
+  {
+    "file": "0017-ring-rust-warnings.patch",
+    "source": "ring"
+  },
+  {
+    "file": "0018-datafusion-target-imports.patch",
+    "source": "."
+  },
+  {
+    "file": "0019-provider-feature-gates.patch",
+    "source": "datafusion-ducklake-provider"
+  },
+  {
+    "file": "0020-workers-workspace-dependency.patch",
+    "source": "workers-rs"
   }
 ]

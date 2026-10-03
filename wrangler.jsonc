@@ -1,12 +1,12 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "datafusion-quacklake-unconfigured",
+  "name": "datafusion-rust-quacklake",
   "main": "build/full/index.js",
   "compatibility_date": "2026-09-29",
   "compatibility_flags": [
     "new_module_registry"
   ],
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "build": {
     "command": "bash scripts/build.sh --variant full"

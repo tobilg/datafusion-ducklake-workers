@@ -1,6 +1,6 @@
 # Compatibility patches
 
-`series.json` is the single ordered inventory of the 14 active patches. Apply
+`series.json` is the single ordered inventory of the 18 active patches. Apply
 with `python3 scripts/apply-patches.py` after fetching pinned sources. Application
 refuses conflicting local edits and recognizes already-applied patches.
 `python3 scripts/verify-patches.py` applies the series to pristine source exports
@@ -27,6 +27,10 @@ digest with the artifact. Reports remain local under `.cache/reports/`.
 | 0014 runtime cleanup | Managed SDK: detach anonymous socket/pipe nodes, cancel epoll deliveries and reclaim completed/cancelled timer handles. Preserve required socket/DNS patches and reject unknown SDK patch stamps. |
 | 0015 mio FD clone | Emscripten/Rust 1.98: use fcntl descriptor duplication because std OwnedFd::try_clone rejects this target. Preserve independent descriptor ownership and other targets' behavior. |
 | 0016 S3 listing bounds | Emscripten: cap each listing response at 2 MiB before XML decoding, including unknown-length responses. Application-wide object listing budgets remain separate. |
+| 0017 ring warnings | Make borrowed return lifetimes explicit and exclude unused CPU-dispatch code on Emscripten. Preserve cryptographic implementations and the C fallback ABI. |
+| 0018 DataFusion imports | Match local-file helper/import gates to the native payload arms. Preserve CSV metric registration on every target. |
+| 0019 provider feature gates | Compile embedded/Postgres-only helpers only with their corresponding features; retain the cleanup-path re-export for Quack tests. The Quack-only Worker behavior is unchanged. |
+| 0020 workspace dependency | Remove the unused workers-rs workspace declaration for wasm-bindgen-shared; actual wasm-bindgen dependency declarations remain intact. |
 
 Source revisions/checksums are in `sources.lock.json` and `tools.lock.json`.
 Each patch names its source in the series manifest. QuackLake 0.2.1 includes the
@@ -48,3 +52,17 @@ provider metadata, deletes and schema history. [Diagnostics](../docs/diagnostics
 cover timer cleanup, network probes, memory and startup. Native tests alone do
 not establish Worker binding lifetimes or platform capacity. Keep compatibility
 updates focused, preserve the source pins and run affected target regressions.
+
+Rust warnings remain enabled. The pinned ring fallback still needs the deprecated
+`prefixed_export!` macro for its C ABI, so that diagnostic remains visible until
+upstream provides a replacement. The pinned Rust/Emscripten linker still reports
+experimental module/import/bindgen settings and Rust 1.98's deprecated
+`WASM_BIGINT` argument. Those toolchain diagnostics remain visible; removing
+required runtime flags or globally suppressing warnings would conceal useful
+compatibility information. Patch 0010 also gates codec imports and mutable
+decoder bindings to their actual native uses.
+
+The pinned upstream worker-build lockfile separately emits a Cargo install
+warning for yanked `yoke-derive` 0.8.3. The application lockfile uses 0.8.2.
+That host-tool dependency refresh is outside these source-warning patches;
+keep locked builds enabled when updating it.

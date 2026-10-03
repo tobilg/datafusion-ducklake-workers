@@ -34,12 +34,13 @@ CI runs quick/native policy checks on Linux and core/full builds with native
 R2, signed S3 and core anonymous S3 file tests. The full job also runs actual
 catalog queries, deletes/schema/snapshots, failure/revocation/UUID tests, both
 variant adapter probes, and managed SDK timer regressions. The build jobs use
-separate Ubuntu 24.04 arm64 runners by default, reuse verified tool/dependency
-caches, and skip Worker builds for prose-only changes. All CI jobs use Linux.
-Manually requested fresh runs disable cache reads/writes. The manual shared-runner
-layout runs the same suites. See [CI controls and measurement](docs/setup.md#ci-speed-cache-and-build-layout).
-These workflows are prepared but must execute in GitHub before CI support is
-claimed. Longer memory/soak investigations remain in the local diagnostics. CI never
+a shared Ubuntu 24.04 arm64 runner by default, reuse compatible compilation
+outputs between core/full, and skip Worker builds for prose-only changes.
+All CI jobs use Linux. Manually requested fresh runs disable cache reads/writes.
+The optional parallel layout runs the same suites on separate runners.
+See [CI controls and measurement](docs/setup.md#ci-speed-cache-and-build-layout).
+Check [GitHub Actions](https://github.com/tobilg/datafusion-ducklake-workers/actions/workflows/ci.yml)
+for each commit's validation results. Longer memory/soak investigations remain in the local diagnostics. CI never
 deploys and needs no Cloudflare secrets. Test setup requires public package and
 fixture downloads.
 

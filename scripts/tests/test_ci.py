@@ -140,7 +140,19 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(json.loads(result["matrix"]), {"variant": ["all"]})
         normal = routing("workflow_dispatch", {}, "a" * 40)
         self.assertEqual(normal["use_cache"], "true")
-        self.assertEqual(json.loads(normal["matrix"]), {"variant": ["core", "full"]})
+        self.assertEqual(json.loads(normal["matrix"]), {"variant": ["all"]})
+        parallel = routing(
+            "workflow_dispatch", {"inputs": {"layout": "parallel"}}, "a" * 40
+        )
+        self.assertEqual(json.loads(parallel["matrix"]), {"variant": ["core", "full"]})
+
+    def test_push_and_pr_default_to_shared_build(self):
+        with patch("ci_changes.changed_paths", return_value=["src/main.rs"]):
+            for event_name in ("push", "pull_request"):
+                result = routing(event_name, {}, "a" * 40)
+                self.assertEqual(result["workers"], "true")
+                self.assertEqual(result["use_cache"], "true")
+                self.assertEqual(json.loads(result["matrix"]), {"variant": ["all"]})
 
 
 class ToolCacheTests(unittest.TestCase):

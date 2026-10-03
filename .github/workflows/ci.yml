@@ -10,10 +10,10 @@ on:
         type: boolean
         default: false
       layout:
-        description: Parallel variants or one runner sharing compilation/setup
+        description: Build core/full together or on separate parallel runners
         type: choice
-        options: [parallel, shared]
-        default: parallel
+        options: [shared, parallel]
+        default: shared
 permissions:
   contents: read
 concurrency:

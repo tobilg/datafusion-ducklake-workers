@@ -17,6 +17,7 @@ mod r2_contract;
 #[cfg(target_os = "emscripten")]
 mod r2_store;
 mod registry;
+#[cfg(feature = "ducklake")]
 mod storage;
 #[cfg(feature = "protocol-probe")]
 use datafusion::{

@@ -57,9 +57,9 @@ args = [
     "run",
     "--rm",
     "--name",
-    "datafusion-quacklake-minio-fixture",
+    "datafusion-ducklake-minio-fixture",
     "--label",
-    "local.fixture=datafusion-quacklake-workers",
+    "local.fixture=datafusion-ducklake-workers",
     "--publish",
     "127.0.0.1:9000:9000",
     "--memory",
@@ -75,5 +75,5 @@ for key in (
     "GOMEMLIMIT",
 ):
     args += ["--env", key]
-args += ["datafusion-quacklake-minio:07c3a429"]
+args += ["datafusion-ducklake-minio:07c3a429"]
 raise SystemExit(subprocess.call(args, env=env))

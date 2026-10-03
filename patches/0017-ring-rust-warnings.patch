@@ -1,0 +1,275 @@
+--- a/src/aead/aes.rs
++++ b/src/aead/aes.rs
+@@ -15,12 +15,15 @@
+ use super::{nonce::Nonce, overlapping, quic::Sample, NONCE_LEN};
+ use crate::{
+     bb,
+-    cpu::{self, GetFeature as _},
++    cpu,
+     error,
+     polyfill::unwrap_const,
+ };
+ use cfg_if::cfg_if;
+ use core::num::NonZeroU32;
++
++#[cfg(not(target_os = "emscripten"))]
++use crate::cpu::GetFeature as _;
+
+ pub(super) use ffi::Counter;
+
+--- a/src/aead/aes_gcm.rs
++++ b/src/aead/aes_gcm.rs
+@@ -78,6 +78,7 @@
+
+ impl DynKey {
+     fn new(key: aes::KeyBytes, cpu: cpu::Features) -> Result<Self, error::Unspecified> {
++        #[cfg(not(target_os = "emscripten"))]
+         let cpu = cpu.values();
+
+         #[cfg(target_arch = "x86_64")]
+--- a/src/aead/gcm/ffi.rs
++++ b/src/aead/gcm/ffi.rs
+@@ -12,10 +12,9 @@
+ // OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ // CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+-use crate::{
+-    bb,
+-    polyfill::{slice::AsChunks, ArraySplitMap},
+-};
++use crate::{bb, polyfill::ArraySplitMap};
++#[cfg(not(target_os = "emscripten"))]
++use crate::polyfill::slice::AsChunks;
+
+ pub(in super::super) const BLOCK_LEN: usize = 16;
+ pub(in super::super) type Block = [u8; BLOCK_LEN];
+@@ -139,6 +138,7 @@
+ }
+
+ // The alignment is required by some assembly code, such as `ghash-ssse3-*`.
++#[cfg(not(target_os = "emscripten"))]
+ #[derive(Clone)]
+ #[repr(C, align(16))]
+ pub(in super::super) struct HTable {
+@@ -152,6 +152,7 @@
+     pub(super) lo: u64,
+ }
+
++#[cfg(not(target_os = "emscripten"))]
+ const HTABLE_LEN: usize = 16;
+
+ #[repr(transparent)]
+--- a/src/aead/gcm.rs
++++ b/src/aead/gcm.rs
+@@ -27,7 +27,9 @@
+     if #[cfg(any(all(target_arch = "aarch64", target_endian = "little"), target_arch = "x86_64"))] {
+         pub(super) use self::ffi::{HTable, Xi};
+     } else {
+-        use self::ffi::{HTable, Xi};
++        #[cfg(not(target_os = "emscripten"))]
++        use self::ffi::HTable;
++        use self::ffi::Xi;
+     }
+ }
+
+--- a/src/arithmetic/bigint/modulus.rs
++++ b/src/arithmetic/bigint/modulus.rs
+@@ -113,7 +113,7 @@
+         })
+     }
+
+-    pub(crate) fn modulus(&self, cpu_features: cpu::Features) -> Modulus<M> {
++    pub(crate) fn modulus(&self, cpu_features: cpu::Features) -> Modulus<'_, M> {
+         Modulus {
+             limbs: self.inner.limbs(),
+             n0: self.n0,
+--- a/src/arithmetic/limbs512/storage.rs
++++ b/src/arithmetic/limbs512/storage.rs
+@@ -45,7 +45,7 @@
+         &mut self,
+         num_entries: usize,
+         chunks_per_entry: usize,
+-    ) -> Result<AsChunksMut<Limb, LIMBS_PER_CHUNK>, LenMismatchError> {
++    ) -> Result<AsChunksMut<'_, Limb, LIMBS_PER_CHUNK>, LenMismatchError> {
+         let total_limbs = num_entries * chunks_per_entry * LIMBS_PER_CHUNK;
+         let len = self.0.len();
+         let flattened = self
+--- a/src/cpu.rs
++++ b/src/cpu.rs
+@@ -15,6 +15,8 @@
+ pub(crate) use self::features::Features;
+ use core::mem::size_of;
+
++// Emscripten always uses the portable implementation; no CPU dispatch is needed.
++#[cfg(not(target_os = "emscripten"))]
+ macro_rules! impl_get_feature {
+     {
+       features: [
+@@ -73,10 +75,12 @@
+     }
+ }
+
++#[cfg(not(target_os = "emscripten"))]
+ pub(crate) trait GetFeature<T> {
+     fn get_feature(&self) -> Option<T>;
+ }
+
++#[cfg(not(target_os = "emscripten"))]
+ impl GetFeature<()> for features::Values {
+     #[inline(always)]
+     fn get_feature(&self) -> Option<()> {
+@@ -84,6 +88,7 @@
+     }
+ }
+
++#[cfg(not(target_os = "emscripten"))]
+ impl<A, B> GetFeature<(A, B)> for features::Values
+ where
+     features::Values: GetFeature<A>,
+@@ -98,6 +103,7 @@
+     }
+ }
+
++#[cfg(not(target_os = "emscripten"))]
+ impl<A, B, C> GetFeature<(A, B, C)> for features::Values
+ where
+     features::Values: GetFeature<A>,
+@@ -113,6 +119,7 @@
+     }
+ }
+
++#[cfg(not(target_os = "emscripten"))]
+ impl<F> GetFeature<F> for Features
+ where
+     features::Values: GetFeature<F>,
+@@ -137,6 +144,7 @@
+     #[derive(Copy, Clone)]
+     pub(crate) struct Features(NotSend);
+
++    #[cfg(not(target_os = "emscripten"))]
+     impl Features {
+         pub fn values(self) -> Values {
+             Values {
+@@ -165,11 +173,13 @@
+         }
+     }
+
++    #[cfg(not(target_os = "emscripten"))]
+     pub struct Values {
+         values: u32,
+         cpu: Features,
+     }
+
++    #[cfg(not(target_os = "emscripten"))]
+     impl Values {
+         #[inline(always)]
+         pub(super) fn values(&self) -> u32 {
+@@ -201,20 +211,25 @@
+                 Features::new_no_features_to_detect()
+             }
+
++            #[cfg(any(test, not(target_os = "emscripten")))]
+             #[inline(always)]
+             pub(super) fn get(_cpu_features: Features) -> u32 {
+                 STATIC_DETECTED
+             }
+
++            #[cfg(any(test, not(target_os = "emscripten")))]
+             pub(super) const STATIC_DETECTED: u32 = 0;
++            #[cfg(any(test, not(target_os = "emscripten")))]
+             pub(super) const FORCE_DYNAMIC_DETECTION: u32 = 0;
+         }
+     }
+ }
+
++#[cfg(any(test, not(target_os = "emscripten")))]
+ const CAPS_STATIC: u32 = featureflags::STATIC_DETECTED & !featureflags::FORCE_DYNAMIC_DETECTION;
+
+ #[allow(clippy::assertions_on_constants, clippy::bad_bit_mask)]
++#[cfg(any(test, not(target_os = "emscripten")))]
+ const _FORCE_DYNAMIC_DETECTION_HONORED: () =
+     assert!((CAPS_STATIC & featureflags::FORCE_DYNAMIC_DETECTION) == 0);
+
+--- a/src/pkcs8.rs
++++ b/src/pkcs8.rs
+@@ -53,7 +53,7 @@
+
+ impl Template {
+     #[inline]
+-    fn alg_id_value(&self) -> untrusted::Input {
++    fn alg_id_value(&self) -> untrusted::Input<'_> {
+         untrusted::Input::from(self.alg_id_value_())
+     }
+
+@@ -62,7 +62,7 @@
+     }
+
+     #[inline]
+-    pub fn curve_oid(&self) -> untrusted::Input {
++    pub fn curve_oid(&self) -> untrusted::Input<'_> {
+         untrusted::Input::from(&self.alg_id_value_()[self.curve_id_index..])
+     }
+ }
+--- a/src/polyfill/slice/as_chunks.rs
++++ b/src/polyfill/slice/as_chunks.rs
+@@ -16,7 +16,7 @@
+ use core::ops;
+
+ #[inline(always)]
+-pub fn as_chunks<T, const N: usize>(slice: &[T]) -> (AsChunks<T, N>, &[T]) {
++pub fn as_chunks<T, const N: usize>(slice: &[T]) -> (AsChunks<'_, T, N>, &[T]) {
+     assert!(N != 0, "chunk size must be non-zero");
+     let len = slice.len() / N;
+     let (multiple_of_n, remainder) = slice.split_at(len * N);
+--- a/src/polyfill/slice/as_chunks_mut.rs
++++ b/src/polyfill/slice/as_chunks_mut.rs
+@@ -15,7 +15,7 @@
+ use super::AsChunks;
+
+ #[inline(always)]
+-pub fn as_chunks_mut<T, const N: usize>(slice: &mut [T]) -> (AsChunksMut<T, N>, &mut [T]) {
++pub fn as_chunks_mut<T, const N: usize>(slice: &mut [T]) -> (AsChunksMut<'_, T, N>, &mut [T]) {
+     assert!(N != 0, "chunk size must be non-zero");
+     let len = slice.len() / N;
+     let (multiple_of_n, remainder) = slice.split_at_mut(len * N);
+@@ -52,25 +52,25 @@
+
+     #[cfg(target_arch = "x86_64")]
+     #[inline(always)]
+-    pub fn as_mut(&mut self) -> AsChunksMut<T, N> {
++    pub fn as_mut(&mut self) -> AsChunksMut<'_, T, N> {
+         AsChunksMut(self.0)
+     }
+
+     #[inline(always)]
+-    pub fn as_ref(&self) -> AsChunks<T, N> {
++    pub fn as_ref(&self) -> AsChunks<'_, T, N> {
+         AsChunks::<T, N>::from(self)
+     }
+
+     // Argument moved from runtime argument to `const` argument so that
+     // `CHUNK_LEN * N` is checked at compile time for overflow.
+     #[inline(always)]
+-    pub fn chunks_mut<const CHUNK_LEN: usize>(&mut self) -> AsChunksMutChunksMutIter<T, N> {
++    pub fn chunks_mut<const CHUNK_LEN: usize>(&mut self) -> AsChunksMutChunksMutIter<'_, T, N> {
+         AsChunksMutChunksMutIter(self.0.chunks_mut(CHUNK_LEN * N))
+     }
+
+     #[cfg(target_arch = "x86_64")]
+     #[inline(always)]
+-    pub fn split_at_mut(&mut self, mid: usize) -> (AsChunksMut<T, N>, AsChunksMut<T, N>) {
++    pub fn split_at_mut(&mut self, mid: usize) -> (AsChunksMut<'_, T, N>, AsChunksMut<'_, T, N>) {
+         let (before, after) = self.0.split_at_mut(mid * N);
+         (AsChunksMut(before), AsChunksMut(after))
+     }
+--- a/src/rsa/public_modulus.rs
++++ b/src/rsa/public_modulus.rs
+@@ -88,7 +88,7 @@
+         self.value.len_bits()
+     }
+
+-    pub(super) fn value(&self, cpu_features: cpu::Features) -> bigint::Modulus<N> {
++    pub(super) fn value(&self, cpu_features: cpu::Features) -> bigint::Modulus<'_, N> {
+         self.value.modulus(cpu_features)
+     }
+
