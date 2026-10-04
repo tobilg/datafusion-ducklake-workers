@@ -32,9 +32,11 @@ they do not need to be run individually during normal development.
 | Core development server and local key | `npm run dev` |
 | Validate prerequisites | `python3 scripts/check-environment.py --profile build` |
 | Static, workflow, native policy and publication checks | `npm run check` |
+| Fresh Rust core/full and Node advisory checks | `npm run audit` |
 | Core build | `npm run build:core` |
 | Full build | `npm run build:full` |
 | Core/R2 integration | `npm test` |
+| Package tested production JS/WASM and notices | `npm run package:core` / `npm run package:full` |
 
 Replace `core` with `full` where applicable. Development links and probe builds
 are not release artifacts. Builds serialize compilation and JS/WASM collection;
@@ -57,11 +59,13 @@ and an installed MinIO source checkout. Generated reports stay ignored.
 
 Successful CI build jobs upload `datafusion-worker-core-<commit>` and
 `datafusion-worker-full-<commit>` under the workflow run's **Artifacts** section,
-with 3-day retention for PRs and 14 days otherwise. Each archive contains the contents of `build/<variant>/`,
-including WASM, the JavaScript entrypoint, package metadata and compatibility
-shim. Keep these files together; the WASM is not a standalone Worker. Uploads
-exclude temporary build files and diagnostic variants. Deployment still requires
-your own Wrangler configuration, bindings and secrets.
+with 3-day retention for PRs and 14 days otherwise. Each archive contains the
+contents of `dist/<variant>/`: WASM, the JavaScript entrypoint and companions,
+package metadata, deployment configuration, instructions, license/NOTICE texts,
+source pins, patches and `SHA256SUMS`. Keep these files together; the WASM is not
+a standalone Worker. Uploads exclude temporary build files, local test reports,
+credentials and diagnostic variants. Follow the included README to configure
+and deploy without rebuilding Rust. See [release procedure](release.md).
 
 ## CI speed, cache and build layout
 
@@ -73,6 +77,12 @@ All CI jobs use Ubuntu 24.04: Worker builds use arm64 runners, while quick
 checks and the final validation job use x64 runners.
 Use the final **Validation** job as the required branch-protection check so a
 documentation-only change can complete successfully.
+
+Worker validation audits both production Cargo feature graphs and the Node
+tooling against current advisories. `scripts/audit.py` installs a checksummed
+cargo-deny 0.20.2 binary without compiling that host tool, and fails on known
+vulnerabilities. The checks run once in the shared layout (or the core job in
+parallel layout), with no scheduled workflow. No advisory exemptions are present.
 
 Normal runs restore separate caches for pinned tools/managed SDK, package
 downloads, and compiled dependencies. Keys include OS/architecture and relevant

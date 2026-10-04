@@ -57,6 +57,40 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
+        if path.rstrip("/") in ("/namespace-list", "/attribute-list", "/normal-list"):
+            # Well below the 2 MiB response cap. The namespace fixture must be
+            # rejected by quick-xml before unbounded resolver allocation. The
+            # ordinary-attribute fixture exercises its linear duplicate check.
+            if path.startswith("/namespace-list"):
+                attributes = " ".join(f'xmlns:n{i}="urn:n{i}"' for i in range(300))
+            elif path.startswith("/attribute-list"):
+                attributes = " ".join(f'a{i}="x"' for i in range(100000))
+            else:
+                attributes = 'xmlns:n="urn:fixture"'
+            size = (
+                (root / ".cache/file-fixtures/files-a/events/part0.parquet")
+                .stat()
+                .st_size
+            )
+            data = (
+                f"<ListBucketResult {attributes}><IsTruncated>false</IsTruncated>"
+                f"<Contents><Key>events/part0.parquet</Key><Size>{size}</Size>"
+                '<LastModified>2026-09-29T12:00:00Z</LastModified><ETag>"fixture-v1"</ETag>'
+                "</Contents></ListBucketResult>"
+            ).encode()
+            assert len(data) < 2 * 1024 * 1024
+            self.send_response(200)
+            self.send_header("Content-Type", "application/xml")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            if body:
+                self.wfile.write(data)
+            return
+        if path in [
+            f"/{bucket}/events/part0.parquet"
+            for bucket in ("namespace-list", "attribute-list", "normal-list")
+        ]:
+            path = "/data.parquet"
         if path == "/redirect.parquet":
             self.send_response(302)
             self.send_header("Location", "/data.parquet")

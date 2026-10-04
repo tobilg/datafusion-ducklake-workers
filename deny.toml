@@ -1,0 +1,4 @@
+# Audit each production feature graph. No vulnerability exemptions.
+[advisories]
+db-path = ".cache/advisory-db"
+db-urls = ["https://github.com/RustSec/advisory-db"]

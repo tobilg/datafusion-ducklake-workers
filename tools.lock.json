@@ -10,9 +10,9 @@
   },
   "node": "22.22.2",
   "npm": "10.9.7",
-  "wrangler": "4.143.0",
-  "workerd": "1.20260926.1",
-  "miniflare": "5.20260926.0-alpha",
+  "wrangler": "4.147.0",
+  "workerd": "1.20261001.1",
+  "miniflare": "5.20261001.0-alpha",
   "worker-build": "0.8.7",
   "managed_tools": {
     "emscripten": "6.0.10",
@@ -56,5 +56,6 @@
     "quacklake_polyglot_sql_sdk": "0.13.0",
     "quacklake_vitest": "5.0.2",
     "quacklake_vitest_pool_workers": "0.22.0"
-  }
+  },
+  "cargo-deny": "0.20.2"
 }

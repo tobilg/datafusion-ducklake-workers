@@ -28,6 +28,7 @@ plans/
 /.cache/
 /node_modules/
 /build/
+/dist/
 repro/**/build/
 /bundled*/
 fixtures/bundled*/
