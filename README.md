@@ -204,6 +204,11 @@ returned rows, not the work needed for scans, joins, or aggregations. See the
 
 ## Development
 
+Prebuilt core/full packages are available from successful GitHub Actions runs.
+Each includes matching JavaScript and WASM, a Wrangler configuration template,
+licenses and checksums. Follow its included README to deploy without compiling
+Rust; see [release packages and validation](docs/release.md).
+
 ```sh
 npm run check
 # Build, prepare independent Parquet, start services, test, and stop services:
@@ -222,5 +227,6 @@ validation artifacts are not shipped with the repository.
 - [Compatibility patches](patches/README.md)
 - [Security reporting](SECURITY.md)
 - [Third-party components](THIRD_PARTY_NOTICES.md)
+- [Release procedure and complete JS/WASM packages](docs/release.md)
 
 Project source is licensed under [MIT](LICENSE).

@@ -29,10 +29,17 @@ Timestamp strings are **numeric ticks, not ISO dates**. For example `Timestamp(N
 | Body over 32 KiB | 413 |
 | Unsupported output or bounded-resource failure | 422 |
 | Another query owns this isolate's permit | 429 |
+| Missing or incorrectly sized `API_KEY` (`AUTH_CONFIGURATION_INVALID`) | 503 |
 | Missing configuration/service secret, catalog/storage failure | 503 |
 | Cooperative deadline exceeded | 504 |
 
 Errors contain `{request_id,error:{code,message}}`. Responses use `Cache-Control: no-store`. A wrong service JWT produces a service error, not caller 401. Wrong methods/unrecognized routes return 404. The `protocol-probe` Cargo feature exposes unauthenticated diagnostic routes **for local testing only**; it is absent from production builds.
+
+Invalid caller-secret configuration reports `AUTH_CONFIGURATION_INVALID` with
+the required 32–4096 UTF-8 byte length. Logs identify `API_KEY` and either
+`missing_secret` or `invalid_length`, without printing its value or the supplied
+Authorization header. An incorrect caller token against a valid configuration
+still returns `401 UNAUTHORIZED`.
 
 The SQL parser accepts one query statement, nonrecursive CTEs and supported subqueries. The logical-plan walk includes subqueries and permits only read operators and actual `DuckLakeTable<QuackCatalog>` sources. Other catalog names, file/URL sources, table functions, writes, COPY, session settings, recursive CTEs and unapproved functions are rejected. String concatenation (`||`) is also rejected to prevent repeated CTE expansion from allocating large intermediate strings outside the pool. Only explicitly listed scalar/aggregate/window functions in `src/policy.rs` are available through the API. Stored views currently fail the resolved-provider check; view expansion is not an MVP promise. No plugins, UDF registration, arbitrary external sources or per-user row/column security are exposed.
 

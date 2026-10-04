@@ -131,6 +131,9 @@ jobs:
           df -h .
       - run: npm install --global npm@10.9.7
       - run: python3 scripts/ci_run.py bootstrap bash scripts/bootstrap.sh
+      - name: Audit both production graphs and Node tooling
+        if: matrix.variant != 'full'
+        run: python3 scripts/ci_run.py advisories python3 scripts/audit.py
       - run: python3 scripts/ci_run.py duckdb python3 scripts/tool_cache.py duckdb -- python3 scripts/install-duckdb.py
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -171,6 +174,15 @@ jobs:
         run: python3 scripts/verify-patches.py --fixtures
       - run: python3 scripts/check-release.py
       - run: git diff --exit-code
+      - name: Package complete deployable bundles and licenses
+        shell: bash
+        run: |
+          variants="$CI_VARIANT"
+          if [[ "$variants" == all ]]; then variants='core full'; fi
+          for variant in $variants; do
+            python3 scripts/package_release.py --variant "$variant"
+            node scripts/test-package.mjs "$variant"
+          done
       # Only successful main-branch jobs populate caches. PRs restore but never save.
       # One matrix writer per shared cache avoids duplicate uploads.
       - if: env.CI_USE_CACHE == 'true' && github.ref == 'refs/heads/main' && matrix.variant != 'full' && steps.tool-cache.outputs.cache-hit != 'true'
@@ -206,8 +218,7 @@ jobs:
         with:
           name: datafusion-worker-core-${{ github.sha }}
           path: |
-            build/core/
-            !build/core/.tmp/**
+            dist/core/
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'pull_request' && 3 || 14 }}
           include-hidden-files: false
@@ -217,8 +228,7 @@ jobs:
         with:
           name: datafusion-worker-full-${{ github.sha }}
           path: |
-            build/full/
-            !build/full/.tmp/**
+            dist/full/
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'pull_request' && 3 || 14 }}
           include-hidden-files: false

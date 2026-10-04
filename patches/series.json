@@ -70,5 +70,9 @@
   {
     "file": "0020-workers-workspace-dependency.patch",
     "source": "workers-rs"
+  },
+  {
+    "file": "0021-object-store-xml-security.patch",
+    "source": "object_store"
   }
 ]

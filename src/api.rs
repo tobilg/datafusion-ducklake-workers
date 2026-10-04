@@ -53,6 +53,17 @@ impl ApiError {
             message: "Catalog or storage configuration is unavailable",
         }
     }
+    fn auth_config(request_id: &str, reason: &str) -> Self {
+        worker::console_error!(
+            "{}",
+            serde_json::json!({"request_id":request_id,"category":"AUTH_CONFIGURATION_INVALID","configuration_key":"API_KEY","reason":reason})
+        );
+        Self {
+            status: 503,
+            code: "AUTH_CONFIGURATION_INVALID",
+            message: "Configure API_KEY as a secret containing 32 to 4096 UTF-8 bytes",
+        }
+    }
     pub fn timeout() -> Self {
         Self {
             status: 504,
@@ -126,10 +137,10 @@ pub async fn handle(req: Request, env: Env, ready: bool) -> worker::Result<Respo
     let result = async {
         let token = env
             .secret("API_KEY")
-            .map_err(|_| ApiError::config())?
+            .map_err(|_| ApiError::auth_config(&id, "missing_secret"))?
             .to_string();
         if token.len() < 32 || token.len() > 4096 {
-            return Err(ApiError::config());
+            return Err(ApiError::auth_config(&id, "invalid_length"));
         }
         let supplied = req
             .headers()

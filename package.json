@@ -6,8 +6,8 @@
     "node": "22.22.2"
   },
   "devDependencies": {
-    "miniflare": "5.20260926.0-alpha",
-    "wrangler": "4.143.0",
+    "miniflare": "5.20261001.0-alpha",
+    "wrangler": "4.147.0",
     "ws": "8.21.0"
   },
   "license": "MIT",
@@ -18,6 +18,9 @@
   },
   "scripts": {
     "check": "python3 scripts/validate.py",
+    "audit": "python3 scripts/audit.py",
+    "package:core": "python3 scripts/package_release.py --variant core",
+    "package:full": "python3 scripts/package_release.py --variant full",
     "test": "python3 scripts/validate.py --suite files --variant core --backend r2",
     "build:core": "bash scripts/build.sh --variant core",
     "build:full": "bash scripts/build.sh --variant full",

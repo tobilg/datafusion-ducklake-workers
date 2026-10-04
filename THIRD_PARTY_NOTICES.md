@@ -22,7 +22,20 @@ Exact sources and revisions are in `sources.lock.json`, `tools.lock.json` and
 Fetched sources under ignored `vendor/` retain their LICENSE/NOTICE files.
 Patch provenance is documented in [patches/README.md](patches/README.md).
 
-Before distributing compiled Worker bundles or a MinIO fixture binary/container,
-assemble the applicable transitive license texts and notices from those exact
-inputs. MinIO is not linked into, bundled with, or deployed by the query Worker.
-No prebuilt third-party binaries are published by this repository's workflows.
+`npm run package:core` and `npm run package:full` assemble the compiled Worker,
+matching JavaScript companions, transitive Cargo license/NOTICE texts,
+Emscripten runtime notices and Rust standard-library notices under ignored
+`dist/<variant>/`. CI uploads these complete packages. Packaging rejects missing
+license texts, stale modules and file tests from a different build. Its generated
+`THIRD_PARTY_NOTICES.md` and `licenses/components.json` enumerate exact inputs;
+normal/build dependencies are conservatively included, development-only packages
+are excluded. The archive also retains the compatibility patches and source pins.
+
+Two published crates omit their license files. Their texts are retained under
+`licenses/upstream/`, with exact crate VCS revisions and checksums in
+`licenses/upstream/sources.json`. Dependency updates must review those mappings;
+an unknown missing license is an error, not an implicit MIT/Apache assumption.
+
+MinIO is not linked into, bundled with, or deployed by the query Worker. A
+separately distributed fixture binary/container requires its own applicable
+licenses, notices and source-distribution arrangements.

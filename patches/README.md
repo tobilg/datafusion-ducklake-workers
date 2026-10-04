@@ -1,6 +1,6 @@
 # Compatibility patches
 
-`series.json` is the single ordered inventory of the 18 active patches. Apply
+`series.json` is the single ordered inventory of the 19 active patches. Apply
 with `python3 scripts/apply-patches.py` after fetching pinned sources. Application
 refuses conflicting local edits and recognizes already-applied patches.
 `python3 scripts/verify-patches.py` applies the series to pristine source exports
@@ -31,6 +31,7 @@ digest with the artifact. Reports remain local under `.cache/reports/`.
 | 0018 DataFusion imports | Match local-file helper/import gates to the native payload arms. Preserve CSV metric registration on every target. |
 | 0019 provider feature gates | Compile embedded/Postgres-only helpers only with their corresponding features; retain the cleanup-path re-export for Quack tests. The Quack-only Worker behavior is unchanged. |
 | 0020 workspace dependency | Remove the unused workers-rs workspace declaration for wasm-bindgen-shared; actual wasm-bindgen dependency declarations remain intact. |
+| 0021 XML security | All targets: raise object_store's quick-xml requirement to 0.41 to fix RUSTSEC-2026-0194/0195. Cargo.lock pins 0.41.0; retaining the original 0.39 requirement would prevent the security update. S3 integration and adversarial listing tests exercise this path. |
 
 Source revisions/checksums are in `sources.lock.json` and `tools.lock.json`.
 Each patch names its source in the series manifest. QuackLake 0.2.1 includes the

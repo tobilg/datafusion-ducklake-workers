@@ -13,7 +13,8 @@ sessions and the managed SDK. It does not create a nested Tokio runtime.
 | workers-rs | b57ba6ef8198c65499c2f92b1845cc2412dd6e8c |
 | DuckLake provider | 6b97e804e50c4765964e0362dc5e665e1c630f72 |
 | QuackLake | 0.2.1, b3ef21778aa809763bc83e0472eb70d84c1fe906 |
-| Wrangler | 4.143.0 |
+| Wrangler / Miniflare / workerd | 4.147.0 / 5.20261001.0-alpha / 1.20261001.1 |
+| quick-xml / rustls | 0.41.0 / 0.23.45 |
 | Managed Emscripten / wasm-bindgen / wasm-opt | 6.0.10 / 0.2.129 / 132 |
 
 Full source/tool and preview Tokio/mio/libc pins are in `sources.lock.json`,
